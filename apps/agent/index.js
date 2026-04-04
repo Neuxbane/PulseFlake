@@ -59,9 +59,8 @@ const processEvents = async () => {
         
         const messages = chatHistory.slice(-100);
 
-        let systemInstruction = `You are a helpful AI agent logic engine. 
-You receive raw EVENT objects from various apps.
-To interact, you MUST call tools using the format 'appIdentifier.toolName'.`;
+        let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling if needed.
+To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.`;
 
         if (fs.existsSync(instructionPath)) {
             try {
