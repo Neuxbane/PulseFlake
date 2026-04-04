@@ -11,6 +11,19 @@ const provider = new GeminiProvider({ apiKeys, models });
 
 const historyPath = path.resolve(__dirname, 'history.json');
 const instructionPath = path.resolve(__dirname, 'instruction.txt');
+const memoryPath = path.resolve(__dirname, 'memory.jsonl');
+
+const getMemories = () => {
+    if (!fs.existsSync(memoryPath)) return [];
+    const lines = fs.readFileSync(memoryPath, 'utf8').split('\n').filter(l => l.trim());
+    return lines.map(l => JSON.parse(l));
+};
+
+const saveMemories = (memories) => {
+    const content = memories.map(m => JSON.stringify(m)).join('\n');
+    fs.writeFileSync(memoryPath, content);
+};
+
 let chatHistory = [];
 if (fs.existsSync(historyPath)) {
     try {
@@ -74,17 +87,27 @@ const processEvents = async () => {
         
         let messages = chatHistory.slice(-100);
 
+        // Fetch memories and inject into context (as pseudo-history/system setup)
+        const currentMemories = getMemories();
+        const memoryContext = currentMemories.length > 0
+            ? currentMemories.map((m, i) => `[MEMORY ${i+1}] ${m.content}`).join('\n')
+            : "No memories stored.";
+
         // Ensure history ALWAYS starts with a 'user' role for LLM compatibility
         while (messages.length > 0 && messages[0].role !== 'user') {
             messages.shift();
         }
 
         let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
-To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.`;
+To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
+Use \`agent.addMemory\`, \`updateMemory\`, or \`deleteMemory\` to store/curate key facts. If at 20, delete or replace low-value memories. Priority: user identity, core goals, and critical long-term context.
+
+### MEMORY STORAGE (MAX 20)
+${memoryContext}`;
 
         if (fs.existsSync(instructionPath)) {
             try {
-                systemInstruction = fs.readFileSync(instructionPath, 'utf8');
+                systemInstruction = fs.readFileSync(instructionPath, 'utf8') + `\n\n### MEMORY STORAGE (MAX 20)\n${memoryContext}`;
             } catch (e) {
                 console.error('Failed to load instruction:', e);
             }
@@ -94,22 +117,58 @@ To ignore or when there is nothing to do, just go to tool.sleep to skip the time
         const stream = provider.generate(messages, { 
             systemInstruction, 
             thinkingConfig: { include_thoughts: true }, // Enabling thinking for Gemini 2.0+
-            tools: [...toolsForAI, {
-                name: 'agent.updateInstruction',
-                description: 'Update the agent system instruction/personality.',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        instruction: { type: 'string', description: 'The new system instruction' }
-                    },
-                    required: ['instruction']
+            tools: [
+                ...toolsForAI, 
+                {
+                    name: 'agent.updateInstruction',
+                    description: 'Update the agent system instruction/personality.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            instruction: { type: 'string', description: 'The new system instruction' }
+                        },
+                        required: ['instruction']
+                    }
+                },
+                {
+                    name: 'agent.addMemory',
+                    description: 'Add a new fact/memory to memory.jsonl (Max 20).',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            content: { type: 'string', description: 'The fact or memory to store.' }
+                        },
+                        required: ['content']
+                    }
+                },
+                {
+                    name: 'agent.deleteMemory',
+                    description: 'Delete a memory from memory.jsonl by index (1-based).',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            index: { type: 'integer', description: 'The index of the memory to delete (1-20).' }
+                        },
+                        required: ['index']
+                    }
+                },
+                {
+                    name: 'agent.updateMemory',
+                    description: 'Update an existing memory at a specific index (1-based).',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            index: { type: 'integer', description: 'The index of the memory to update (1-20).' },
+                            content: { type: 'string', description: 'The new content for the memory.' }
+                        },
+                        required: ['index', 'content']
+                    }
                 }
-            }]
+            ]
         });
 
         for await (const chunkGenerator of stream) {
             for await (const part of chunkGenerator) {
-                console.log(part);
                 if (part.done) {
                     // Check if text contains JSON-formatted function call
                     let functionCallToExecute = part.functionCall;
@@ -152,6 +211,35 @@ To ignore or when there is nothing to do, just go to tool.sleep to skip the time
                                 fs.writeFileSync(instructionPath, args.instruction);
                                 toolRes = { success: true, message: 'Instruction updated.' };
                                 console.log('🤖 System instruction updated.');
+                            } else if (fullName === 'agent.addMemory') {
+                                const memories = getMemories();
+                                if (memories.length >= 20) {
+                                    toolRes = { success: false, message: 'Max memory limit reached (20). Please delete or update an existing memory.' };
+                                } else {
+                                    memories.push({ content: args.content });
+                                    saveMemories(memories);
+                                    toolRes = { success: true, message: 'Memory added.' };
+                                }
+                            } else if (fullName === 'agent.deleteMemory') {
+                                const memories = getMemories();
+                                const idx = args.index - 1;
+                                if (idx >= 0 && idx < memories.length) {
+                                    memories.splice(idx, 1);
+                                    saveMemories(memories);
+                                    toolRes = { success: true, message: 'Memory deleted.' };
+                                } else {
+                                    toolRes = { success: false, message: 'Invalid memory index.' };
+                                }
+                            } else if (fullName === 'agent.updateMemory') {
+                                const memories = getMemories();
+                                const idx = args.index - 1;
+                                if (idx >= 0 && idx < memories.length) {
+                                    memories[idx].content = args.content;
+                                    saveMemories(memories);
+                                    toolRes = { success: true, message: 'Memory updated.' };
+                                } else {
+                                    toolRes = { success: false, message: 'Invalid memory index.' };
+                                }
                             } else {
                                 const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
                                 await server.connect(socketPath);

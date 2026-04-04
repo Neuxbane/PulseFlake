@@ -109,11 +109,39 @@ function appendMessage(sender, text, type) {
     const inner = document.createElement('div');
     inner.className = `${type === 'user' ? 'bg-pink-600 text-white' : 'bg-gray-800/50 border border-gray-700/30'} p-4 rounded-2xl max-w-[85%] text-sm shadow-xl`;
     
+    // Parse links and fetch metadata
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = text.match(urlRegex);
+
     inner.innerHTML = `
         <p class="font-bold text-[10px] uppercase tracking-widest mb-1 ${type === 'user' ? 'text-pink-200' : 'text-pink-500'}">${sender}</p>
         <div class="prose prose-invert prose-pink max-w-none text-sm leading-relaxed">${marked.parse(text)}</div>
+        <div class="metadata-container mt-3 space-y-2"></div>
     `;
     
+    if (urls) {
+        const metadataContainer = inner.querySelector('.metadata-container');
+        urls.forEach(url => {
+            fetch(`/api/metadata?url=${encodeURIComponent(url)}`)
+                .then(res => res.json())
+                .then(metadata => {
+                    const preview = document.createElement('a');
+                    preview.href = metadata.url;
+                    preview.target = "_blank";
+                    preview.className = "block bg-black/40 border border-gray-700/50 rounded-xl overflow-hidden hover:border-pink-500/50 transition-all group";
+                    preview.innerHTML = `
+                        ${metadata.image ? `<img src="${metadata.image}" class="w-full h-32 object-cover border-b border-gray-700/50" />` : ''}
+                        <div class="p-3">
+                            <h4 class="text-[11px] font-bold text-pink-400 truncate group-hover:text-pink-300 transition-colors">${metadata.title}</h4>
+                            ${metadata.description ? `<p class="text-[10px] text-gray-500 line-clamp-2 mt-1">${metadata.description}</p>` : ''}
+                            <span class="text-[9px] text-gray-600 font-mono mt-2 block truncate">${new URL(metadata.url).hostname}</span>
+                        </div>
+                    `;
+                    metadataContainer.appendChild(preview);
+                });
+        });
+    }
+
     div.appendChild(inner);
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;

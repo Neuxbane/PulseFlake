@@ -116,7 +116,7 @@ class GeminiProvider extends BaseProvider {
 
                         for await (const chunk of response) {
                             // print chunck
-                            console.log(`[GeminiProvider] Received chunk:`, chunk);
+                            // console.log(`[GeminiProvider] Received chunk:`, chunk);
                             if (signal?.aborted) break;
 
                             const parts = [];
@@ -146,7 +146,7 @@ class GeminiProvider extends BaseProvider {
                             }
 
                             if (parts.length > 0) {
-                                console.log(`[GeminiProvider] 🧩 Received ${parts.length} parts in chunk`);
+                                // console.log(`[GeminiProvider] 🧩 Received ${parts.length} parts in chunk`);
                                 for (const part of parts) {
                                     // CRITICAL: We only push to queue. The outer logic handles 
                                     // grouping consecutive parts of the same type into one generator.

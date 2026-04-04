@@ -46,8 +46,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 const activeApps = new Set();
 let registeredTools = [];
 
-// Auto-connect to all sibling sockets
 const fs = require('fs');
+const cheerio = require('cheerio');
+const axios = require('axios');
+
 async function autoConnect() {
     const appsDir = path.join(__dirname, '..');
     const apps = fs.readdirSync(appsDir);
@@ -132,6 +134,34 @@ autoConnect();
 
 // Periodic refresh
 setInterval(refreshTools, 30000);
+
+// Metadata fetching
+app.get('/api/metadata', async (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+        const response = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            },
+            timeout: 5000
+        });
+
+        const $ = cheerio.load(response.data);
+        const metadata = {
+            title: $('title').text() || $('meta[property="og:title"]').attr('content') || $('meta[name="twitter:title"]').attr('content') || url,
+            description: $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || $('meta[name="twitter:description"]').attr('content') || '',
+            image: $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content') || '',
+            url: url
+        };
+
+        res.json(metadata);
+    } catch (error) {
+        console.error(`[console] Metadata fetch error for ${url}:`, error.message);
+        res.json({ title: url, url: url });
+    }
+});
 
 // Connect to Agent to forward chat
 server.connect(AGENT_SOCKET_PATH);

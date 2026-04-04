@@ -28,3 +28,4 @@ archived/
 .wwebjs_auth/
 
 apps/console/console-history.json
+apps/agent/memory.jsonl
