@@ -4,6 +4,53 @@
 
 By decoupling the AI "brain" from its "sensors" and "tools," OpenPulse enables modular, scalable, and highly reactive autonomous agents that can process multi-modal events and orchestrate complex tool-driven workflows.
 
+## 🏗️ Technical Architecture
+
+OpenPulse is built on a modular, event-driven architecture using **Unix Socket IPC** for high-performance communication between micro-apps.
+
+### **System Workflow**
+
+```mermaid
+graph TD
+    User([User/Human]) <--> Console[Console App]
+    Console <--> IPC[Unix Socket IPC Hub]
+    
+    subgraph "Core Components"
+        Agent[Agent App]
+        Tools[Tools Registry]
+        IPC
+    end
+    
+    subgraph "Micro-Apps (Sensors/Tools)"
+        Discord[Discord App]
+        Internet[Internet App]
+        Univ[University App]
+        Template[Template App]
+    end
+
+    Agent <--> IPC
+    Tools <--> IPC
+    Discord <--> IPC
+    Internet <--> IPC
+    Univ <--> IPC
+    Template <--> IPC
+
+    %% Data Flow Example
+    Agent -- "1. Search Tool" --> Tools
+    Tools -- "2. Find Template.ping" --> Template
+    Template -- "3. Return Result" --> Agent
+    Agent -- "4. Push Update" --> Console
+```
+
+### **The "Generic" Micro-App Pattern**
+
+Every micro-app (like `apps/template`) follows a standard lifecycle enabled by the `UnixSocket` utility and `BaseProvider`:
+
+1.  **Identity**: Each app creates a `new UnixSocket("app-name")`.
+2.  **Registration**: On startup, it connects to `tools.sock` and sends its JSON schema.
+3.  **Listening**: It uses `server.listen('*', 'method', callback)` to wait for tool calls from the Agent.
+4.  **Providing**: Apps using LLM features (like `apps/agent`) extend `BaseProvider` (e.g., `GeminiProvider`) to handle multi-modal inputs, tool calling, and streaming responses in a unified format.
+
 ---
 
 ## 📖 The Story of OpenPulse
