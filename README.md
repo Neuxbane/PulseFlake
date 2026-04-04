@@ -6,50 +6,46 @@ By decoupling the AI "brain" from its "sensors" and "tools," OpenPulse enables m
 
 ## 🏗️ Technical Architecture
 
-OpenPulse is built on a modular, event-driven architecture using **Unix Socket IPC** for high-performance communication between micro-apps.
+OpenPulse is built on a modular, event-driven architecture using **Unix Socket IPC** for high-performance communication between independent processes.
 
-### **System Workflow**
+### **The Core Philosophy: "Everything is a Socket"**
+
+At its most abstract, the system consists of three fundamental primitives:
+
+1.  **The Bus (`UnixSocket.js`)**: A lightweight wrapper around Node's `net` module that allows any process to act as both a **Server** (listening for requests) and a **Client** (sending requests/broadcasts) over Unix domain sockets.
+2.  **The Provider (`BaseProvider.js`)**: A generic interface for "Intelligence." It doesn't care if the intelligence comes from Gemini, Llama, or a set of hardcoded rules. It translates multi-modal inputs into structured tool calls and text responses.
+3.  **The Registry (`apps/tools`)**: A central process that keeps track of which socket "owns" which capability.
+
+### **Abstract Workflow**
 
 ```mermaid
-graph TD
-    User([User/Human]) <--> Console[Console App]
-    Console <--> IPC[Unix Socket IPC Hub]
-    
-    subgraph "Core Components"
-        Agent[Agent App]
-        Tools[Tools Registry]
-        IPC
-    end
-    
-    subgraph "Micro-Apps (Sensors/Tools)"
-        Discord[Discord App]
-        Internet[Internet App]
-        Univ[University App]
-        Template[Template App]
-    end
+sequenceDiagram
+    participant App A (Requester)
+    participant Bus (Unix Sockets)
+    participant Registry (Tools)
+    participant App B (Provider)
 
-    Agent <--> IPC
-    Tools <--> IPC
-    Discord <--> IPC
-    Internet <--> IPC
-    Univ <--> IPC
-    Template <--> IPC
+    Note over App B: 1. Initialization
+    App B->>Bus: Create socket 'app-b.sock'
+    App B->>Registry: Register "Tool X" via Bus
 
-    %% Data Flow Example
-    Agent -- "1. Search Tool" --> Tools
-    Tools -- "2. Find Template.ping" --> Template
-    Template -- "3. Return Result" --> Agent
-    Agent -- "4. Push Update" --> Console
+    Note over App A: 2. Discovery & Execution
+    App A->>Registry: "Who can do Tool X?"
+    Registry-->>App A: "App B can"
+    App A->>Bus: Request 'Tool X' from 'app-b.sock'
+    Bus->>App B: Incoming Request
+    App B-->>Bus: Response Data
+    Bus-->>App A: Final Result
 ```
 
 ### **The "Generic" Micro-App Pattern**
 
-Every micro-app (like `apps/template`) follows a standard lifecycle enabled by the `UnixSocket` utility and `BaseProvider`:
+Every micro-app follows a standard lifecycle enabled by the `UnixSocket` utility:
 
 1.  **Identity**: Each app creates a `new UnixSocket("app-name")`.
-2.  **Registration**: On startup, it connects to `tools.sock` and sends its JSON schema.
-3.  **Listening**: It uses `server.listen('*', 'method', callback)` to wait for tool calls from the Agent.
-4.  **Providing**: Apps using LLM features (like `apps/agent`) extend `BaseProvider` (e.g., `GeminiProvider`) to handle multi-modal inputs, tool calling, and streaming responses in a unified format.
+2.  **Registration**: On startup, it connects to a discovery socket (usually `tools.sock`) and sends its JSON schema.
+3.  **Interface**: It uses `server.listen('*', 'method', callback)` to wait for incoming instructions.
+4.  **Decoupling**: No app needs to know the physical location or implementation details of another. They only need to know the **Method Name** and the **Socket Identifier**.
 
 ---
 
