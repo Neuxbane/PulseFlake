@@ -41,6 +41,7 @@ class GeminiProvider extends BaseProvider {
             toolConfig, 
             safetySettings, 
             generationConfig,
+            thinkingConfig,
             signal 
         } = options;
 
@@ -96,7 +97,8 @@ class GeminiProvider extends BaseProvider {
                         toolConfig,
                         safetySettings,
                         generationConfig,
-                        systemInstruction: sysInst
+                        systemInstruction: sysInst,
+                        thinkingConfig
                     }
                 });
 

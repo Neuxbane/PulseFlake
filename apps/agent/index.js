@@ -72,17 +72,21 @@ To interact, you MUST call tools using the format 'appIdentifier.toolName'.`;
         }
 
         console.log('🤖 Thinking...');
-        const stream = provider.generate(messages, { systemInstruction, tools: [...toolsForAI, {
-            name: 'agent.updateInstruction',
-            description: 'Update the agent system instruction/personality.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    instruction: { type: 'string', description: 'The new system instruction' }
-                },
-                required: ['instruction']
-            }
-        }] });
+        const stream = provider.generate(messages, { 
+            systemInstruction, 
+            thinkingConfig: { include_thoughts: true }, // Enabling thinking for Gemini 2.0+
+            tools: [...toolsForAI, {
+                name: 'agent.updateInstruction',
+                description: 'Update the agent system instruction/personality.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        instruction: { type: 'string', description: 'The new system instruction' }
+                    },
+                    required: ['instruction']
+                }
+            }]
+        });
 
         for await (const chunkGenerator of stream) {
             let accumulated = {};
