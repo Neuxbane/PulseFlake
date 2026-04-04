@@ -37,7 +37,17 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
-## 🚀 Current Apps
+## �️ MLLM & Multi-Modal Support
+
+OpenPulse is architected for the **Multi-modal Large Language Model (MLLM)** era. The communication contract between apps goes beyond simple text:
+
+*   **Multi-Modal Inputs**: Apps can broadcast events containing images, files, or complex binary data. The system is designed to pass these through the `BaseProvider` to models that "see" and "hear."
+*   **Rich Tool Outputs**: Tools are not restricted to strings. They can return structured JSON, file paths, or binary references, allowing the AI to interact with the world with high fidelity.
+*   **Future Proof**: The internal message schema supports text, inline data (base64), and function responses, ensuring compatibility with the next generation of multi-modal AI models.
+
+---
+
+## �🚀 Current Apps
 
 | App | Description |
 | :--- | :--- |
