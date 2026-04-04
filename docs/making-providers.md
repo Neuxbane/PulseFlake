@@ -25,7 +25,7 @@ A provider should handle **retries** and **API key rotation** internally (as see
 
 ---
 
-## � How to Use a Provider
+## 🚀 How to Use a Provider
 
 Consumers (like the `agent` or `tools` apps) don't need to know the specifics of the provider. They interact with it via the standardized `generate` and `embed` methods.
 
@@ -48,7 +48,8 @@ const stream = provider.generate(messages, {
 for await (const chunkGenerator of stream) {
     for await (const part of chunkGenerator) {
         if (part.text) process.stdout.write(part.text);
-        if (part.done) console.log("\n--- Generation Finished ---");
+        if (part.done) console.log("
+--- Generation Finished ---");
     }
 }
 
@@ -59,4 +60,46 @@ console.log("Vector size:", vector.length); // e.g., 768 or 1536
 
 ---
 
-## �🛠️ Implementing a Provider
+## 🛠️ Implementing a Provider
+
+To add support for a new AI model (e.g., OpenAI, Anthropic, or a local Llama instance), follow these steps:
+
+### **1. Build on the Contract**
+The `BaseProvider` class in `utils/BaseProvider.js` serves as the interface contract. It is **heavily documented via JSDoc/Intellisense**, providing clear type definitions for `messages`, `options`, `generate`, and `embed` methods. Use these definitions as your source of truth.
+
+### **2. Create Your Class**
+Create a new file in `providers/your-provider.js` and extend the base:
+
+```javascript
+const BaseProvider = require('#BaseProvider');
+
+class CustomProvider extends BaseProvider {
+    /**
+     * @inheritdoc
+     */
+    async *generate(messages, options) {
+        // Implement streaming logic here
+        // Yield { text, done: false } for chunks
+        // Yield { functionCall, done: true } for tool calls
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async embed(inputs) {
+        // Implement vector embedding logic here
+        // Return an array of floats
+    }
+}
+
+module.exports = CustomProvider;
+```
+
+### **3. Register the Provider**
+Update `utils/Providers.js` to export your new class so it can be used across the ecosystem.
+
+---
+
+## ✅ Requirements
+*   **Streaming**: The `generate` method **must** return an Async Generator to support real-time feedback.
+*   **Intellisense**: Refer to `utils/BaseProvider.js` for detailed data structure requirements (e.g., `MessagePart`, `FunctionCallPart`, etc.).
