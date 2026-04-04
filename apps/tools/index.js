@@ -51,14 +51,10 @@ server.listen('*', 'built-in', async(req, res) => {
 
 server.listen('*', 'search', async(req, res) => {
     try {
-
         const queryEmbedding = await provider.embed([{text: req.data}]);
-
         const results = Object.entries(toolEmbeddings).map(([fullToolName, embedding]) => {
             const similarity = cosineSimilarity(queryEmbedding, embedding);
-            // fullToolName is "identifier.name"
             const [identifier, name] = fullToolName.split('.');
-            // Find the original definition
             const definition = tools[identifier]?.find(t => t.name === name);
             return { 
                 fullName: fullToolName, 
@@ -67,13 +63,27 @@ server.listen('*', 'search', async(req, res) => {
                 similarity,
                 definition
             };
-        }).sort((a, b) => b.similarity - a.similarity).slice(0, 10); // Return top 10 results
-        
+        }).sort((a, b) => b.similarity - a.similarity).slice(0, 10);
         res.send(results);
     } catch (err) {
         console.error(`[tools] Search error:`, err.message);
         res.send([]);
     }
+});
+
+server.listen('*', 'dump', async(req, res) => {
+    const allTools = [];
+    for (const [identifier, toolList] of Object.entries(tools)) {
+        for (const definition of toolList) {
+            allTools.push({
+                identifier,
+                name: definition.name,
+                fullName: `${identifier}.${definition.name}`,
+                definition
+            });
+        }
+    }
+    res.send(allTools);
 });
 
 server.listen('*', 'sleep', async(req, res) => {

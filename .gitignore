@@ -26,3 +26,5 @@ build/
 archived/
 
 .wwebjs_auth/
+
+apps/console/console-history.json

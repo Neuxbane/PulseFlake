@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenPulse💕 | Console</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+    <div id="app" class="h-screen flex overflow-hidden">
+        <!-- Main Mini Sidebar -->
+        <nav class="w-16 bg-gray-950 flex flex-col items-center py-6 gap-6 border-r border-gray-800 shadow-2xl z-20">
+            <div class="text-pink-500 text-xl font-black mb-4 cursor-default">💕</div>
+            
+            <button onclick="showPage('chat')" id="nav-chat" class="p-3 rounded-xl transition-all duration-300 bg-pink-600 text-white" title="Chat Assistant">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+            </button>
+
+            <button onclick="showPage('services')" id="nav-services" class="p-3 rounded-xl transition-all duration-300 text-gray-500 hover:bg-gray-800 hover:text-gray-300" title="Services & Tools">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+            </button>
+
+            <div class="mt-auto p-3 text-gray-700 hover:text-red-500 cursor-pointer transition-colors" onclick="location.reload()" title="Reload">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </div>
+        </nav>
+
+        <!-- PAGE: CHAT (ChatGPT Style) -->
+        <main id="page-chat" class="flex-1 flex flex-col bg-gray-900 overflow-hidden">
+            <header class="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900/50 backdrop-blur-md">
+                <div class="flex items-center gap-3">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                    <span class="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Agent Reactive Core</span>
+                </div>
+            </header>
+
+            <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-8 space-y-6 max-w-4xl mx-auto w-full">
+                <!-- Welcome Message -->
+                <div class="flex flex-col items-center justify-center py-10 opacity-40">
+                    <div class="w-12 h-12 bg-pink-900/20 rounded-full flex items-center justify-center mb-4">
+                        <span class="text-2xl">💕</span>
+                    </div>
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">This is the begining of your chat history with OpenPulse💕</p>
+                </div>
+            </div>
+
+            <div class="p-6">
+                <div class="max-w-3xl mx-auto relative">
+                    <input type="text" id="chat-input" placeholder="Message OpenPulse..." class="w-full bg-gray-800 border border-gray-700 text-white rounded-2xl px-6 py-4 pr-16 focus:outline-none focus:border-pink-600 focus:ring-1 focus:ring-pink-600 transition-all shadow-2xl">
+                    <button onclick="sendMessage()" class="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-pink-600 text-white rounded-xl hover:bg-pink-500 transition-all shadow-lg active:scale-95">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                    </button>
+                </div>
+                <p class="text-[10px] text-center text-gray-600 mt-2 uppercase tracking-tighter">Event-Driven Architecture | Basic Auth Secured</p>
+            </div>
+        </main>
+
+        <!-- PAGE: SERVICES (Services & Tools) -->
+        <main id="page-services" class="hidden flex-1 flex text-gray-300 bg-gray-950 overflow-hidden">
+            <!-- Services List -->
+            <div class="w-64 border-r border-gray-900 bg-gray-900/30 flex flex-col">
+                <div class="p-5">
+                    <h2 class="text-sm font-black tracking-widest text-white uppercase">Services</h2>
+                    <p class="text-[10px] text-gray-600 font-mono">ACTIVE_SOCKETS</p>
+                </div>
+                <div id="service-list" class="flex-1 overflow-y-auto px-3 space-y-1">
+                    <!-- Socket identifiers here -->
+                </div>
+            </div>
+
+            <!-- Tool Explorer -->
+            <div class="flex-1 flex flex-col">
+                <div class="p-6 border-b border-gray-900 bg-gray-900/20">
+                    <h2 id="selected-service-name" class="text-xl font-bold text-white uppercase tracking-widest italic">Node Playground</h2>
+                    <p class="text-xs text-gray-500 mt-1">Select an active service to inspect and trigger its registered tools.</p>
+                </div>
+
+                <div id="tool-explorer" class="flex-1 overflow-y-auto p-6 space-y-4">
+                    <!-- Tool cards here -->
+                    <div class="h-full flex flex-col items-center justify-center opacity-10">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a2 2 0 012 2v3a2 2 0 01-2 2h-3a2 2 0 01-2-2v-1a2 2 0 10-4 0v1a2 2 0 01-2 2H4a2 2 0 01-2-2v-3a2 2 0 012-2h1a2 2 0 100-4H4a2 2 0 01-2-2V7a2 2 0 012-2h3a2 2 0 012 2v1a2 2 0 001 1h3z" /></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Event Stream Overlay -->
+            <div class="w-72 bg-black border-l border-gray-900 flex flex-col">
+                <div class="p-4 border-b border-gray-900">
+                    <h3 class="text-[10px] font-bold text-gray-500 tracking-widest uppercase">Ecosystem Logs</h3>
+                </div>
+                <div id="ecosystem-logs" class="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[9px] text-gray-700">
+                    <!-- Events here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

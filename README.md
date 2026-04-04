@@ -48,6 +48,7 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 | **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
 | **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
 | **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
+| **Console** 🎛️ | A web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. |
 | **Template** 📂 | A boilerplate for quickly spinning up new OpenPulse micro-apps. |
 
 ---

@@ -1,0 +1,41 @@
+/* Basic styling for OpenPulse Console */
+#chat-box::-webkit-scrollbar, 
+#tool-list::-webkit-scrollbar, 
+#event-log::-webkit-scrollbar {
+    width: 4px;
+}
+#chat-box::-webkit-scrollbar-track,
+#tool-list::-webkit-scrollbar-track,
+#event-log::-webkit-scrollbar-track {
+    background: transparent;
+}
+#chat-box::-webkit-scrollbar-thumb,
+#tool-list::-webkit-scrollbar-thumb,
+#event-log::-webkit-scrollbar-thumb {
+    background: #374151; /* gray-700 */
+    border-radius: 10px;
+}
+#chat-box::-webkit-scrollbar-thumb:hover,
+#tool-list::-webkit-scrollbar-thumb:hover,
+#event-log::-webkit-scrollbar-thumb:hover {
+    background: #4b5563; /* gray-600 */
+}
+
+input:focus {
+    outline: none;
+    box-shadow: 0 0 10px rgba(236, 72, 153, 0.4); /* pink-500 shadow */
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+}
+
+body {
+    scrollbar-color: #374151 #111827; /* gray-700 gray-900 */
+    scrollbar-width: thin;
+}
