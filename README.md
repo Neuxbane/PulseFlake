@@ -50,17 +50,24 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
-## 🛠️ Getting Started
+## � Quick Start
 
-### **1. Environment Setup**
+### **1. Installation**
+```bash
+git clone https://github.com/Neuxbane/OpenPulse.git
+cd OpenPulse
+npm install
+```
+
+### **2. Environment Setup**
 Create a `.env` file in the root with your API keys:
 ```env
 GEMINI_API_KEYS=your_key1,your_key2
-# (Optional) List providers or model overrides
+DISCORD_TOKEN=your_token
 ```
 
-### **2. Running the Ecosystem**
-Each app runs in its own process. It is recommended to run them in `screen` or `pm2`.
+### **3. Running the Ecosystem**
+It is recommended to run each service in its own `screen` or `pm2` process.
 
 **Base system:**
 ```bash
@@ -77,14 +84,12 @@ node apps/internet/index.js
 
 ---
 
-## 🧩 Creating New Apps
+## 🛠️ Development & Contributions
 
-To create a new app, refer to the [apps/template/index.js](apps/template/index.js).
+OpenPulse is built to be extended. Whether you want to add new capabilities or support new AI models, follow the guides below:
 
-1.  **Initialize Socket**: `new UnixSocket('your-app-name')`
-2.  **Connect & Register**: Use `server.connect(TOOLS_PATH)` to register your JSON tool definitions.
-3.  **Listen**: Use `server.listen('*', 'toolName', callback)` to handle Agent requests.
-4.  **Broadcast**: Use `server.broadcast('event', data)` to notify the Agent of something happening.
+*   **[Making New Apps](docs/making-apps.md)**: Learn how to create micro-apps that register tools and broadcast events.
+*   **[Adding AI Providers](docs/making-providers.md)**: Guide on extending the `BaseProvider` to support LLMs like OpenAI, Anthropic, or local Ollama instances.
 
 ---
 
