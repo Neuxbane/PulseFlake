@@ -82,7 +82,7 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
-## � Current Apps
+## 📱 Current Apps
 
 | App | Description |
 | :--- | :--- |
@@ -96,7 +96,7 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
-## � Quick Start
+## ⚡ Quick Start
 
 ### **1. Installation**
 ```bash
