@@ -112,39 +112,60 @@ class GeminiProvider extends BaseProvider {
                 const processStream = async () => {
                     try {
                         console.log(`[GeminiProvider] 📥 Starting to process stream chunks...`);
+                        let lastPartType = null;
+
                         for await (const chunk of response) {
+                            // print chunck
+                            console.log(`[GeminiProvider] Received chunk:`, chunk);
                             if (signal?.aborted) break;
 
                             const parts = [];
                             
+                            // Check if this chunk indicates the stream is finishing
+                            const isStreamEnding = chunk.candidates?.[0]?.finishReason === 'STOP';
+                            
                             // Native extraction as per @google/genai documentation
-                            if (chunk.text && typeof chunk.text === 'function') {
+                            if (chunk.text && (typeof chunk.text === 'function' || typeof chunk.text === 'string')) {
+                                let textValue;
                                 try {
-                                    const textValue = chunk.text();
-                                    if (textValue) parts.push({ type: 'text', data: { text: textValue }, done: false });
-                                } catch (e) {
-                                    // chunk.text() throws if no text is present (e.g. just function calls)
+                                    textValue = typeof chunk.text === 'function' ? chunk.text() : chunk.text;
+                                } catch (e) {}
+                                
+                                if (textValue) {
+                                    // If previous part was text, many implementations prefer appending
+                                    // but our generator logic yields distinct generators for different "types"
+                                    // The issue is if Gemini emits Text -> FunctionCall -> Text.
+                                    parts.push({ type: 'text', data: { text: textValue }, done: isStreamEnding });
                                 }
-                            } else if (chunk.text && typeof chunk.text === 'string') {
-                                parts.push({ type: 'text', data: { text: chunk.text }, done: false });
                             }
                             
                             if (chunk.functionCalls) {
                                 for (const call of chunk.functionCalls) {
-                                    parts.push({ type: 'functionCall', data: { functionCall: call }, done: false });
+                                    parts.push({ type: 'functionCall', data: { functionCall: call }, done: isStreamEnding });
                                 }
                             }
 
                             if (parts.length > 0) {
                                 console.log(`[GeminiProvider] 🧩 Received ${parts.length} parts in chunk`);
                                 for (const part of parts) {
+                                    // CRITICAL: We only push to queue. The outer logic handles 
+                                    // grouping consecutive parts of the same type into one generator.
                                     currentQueue.push(part);
                                 }
-                                if (resolveNext) {
+                            }
+                            
+                            // If stream is ending, mark it and wake up any waiting generators
+                            if (isStreamEnding) {
+                                streamEnded = true;
+                                if (parts.length === 0 && resolveNext) {
                                     const res = resolveNext;
                                     resolveNext = null;
                                     res();
                                 }
+                            } else if (parts.length > 0 && resolveNext) {
+                                const res = resolveNext;
+                                resolveNext = null;
+                                res();
                             }
                         }
                     } catch (e) {
@@ -179,17 +200,47 @@ class GeminiProvider extends BaseProvider {
                     // Yield a generator for this specific type of part
                     yield (async function* (thisProvider) {
                         let accumulated = {};
+                        let hasYielded = false;
+                        
                         // While we have parts of the same type, yield them
-                        while (currentQueue.length > 0 && currentQueue[0].type === partType) {
-                            const part = currentQueue[0];
-                            accumulated = thisProvider.mergeAndConcat(accumulated, part.data);
-                            
-                            // Check if there are more parts of the SAME type immediately available
-                            // If NOT, we yield with done: true to signal the end of this conceptual chunk
-                            currentQueue.shift();
-                            const isLastOfCurrentType = currentQueue.length === 0 || currentQueue[0].type !== partType;
-                            
-                            yield { ...part.data, done: isLastOfCurrentType };
+                        while (true) {
+                            if (currentQueue.length === 0) {
+                                // Wait for more data
+                                await new Promise(r => resolveNext = r);
+                            }
+
+                            // If different type next, exit this generator
+                            if (currentQueue.length > 0 && currentQueue[0].type !== partType) {
+                                break;
+                            }
+
+                            // If nothing in queue and stream ended, this part is DONE
+                            if (currentQueue.length === 0 && streamEnded) {
+                                if (hasYielded && Object.keys(accumulated).length > 0) {
+                                    // Yield one more time with done: true to signal completion
+                                    yield { ...accumulated, done: true };
+                                }
+                                break;
+                            }
+
+                            // If nothing in queue, wait again
+                            if (currentQueue.length === 0) {
+                                continue;
+                            }
+
+                            // Pop next part of this type
+                            const currentPart = currentQueue.shift();
+                            accumulated = thisProvider.mergeAndConcat(accumulated, currentPart.data);
+                            hasYielded = true;
+
+                            // Check if there are more parts of the SAME type coming or stream is over
+                            const hasMoreOfSameType = currentQueue.length > 0 && currentQueue[0].type === partType;
+                            const isFinished = !hasMoreOfSameType && streamEnded;
+
+                            // Yield with done: true only if this is the final state
+                            yield { ...accumulated, done: isFinished };
+
+                            if (isFinished) break;
                         }
                         
                         return accumulated;

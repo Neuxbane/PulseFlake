@@ -111,7 +111,7 @@ function appendMessage(sender, text, type) {
     
     inner.innerHTML = `
         <p class="font-bold text-[10px] uppercase tracking-widest mb-1 ${type === 'user' ? 'text-pink-200' : 'text-pink-500'}">${sender}</p>
-        <div class="whitespace-pre-wrap">${text}</div>
+        <div class="prose prose-invert prose-pink max-w-none text-sm leading-relaxed">${marked.parse(text)}</div>
     `;
     
     div.appendChild(inner);

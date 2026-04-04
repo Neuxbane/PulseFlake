@@ -20,8 +20,25 @@ if (fs.existsSync(historyPath)) {
     }
 }
 
+// Initial bootstrapping if history is empty
+if (chatHistory.length === 0) {
+    chatHistory.push(
+        { 
+            role: 'user', 
+            parts: [{ text: "System Initialized. You are in Event-Driven System Architecture. We only accept using Function Calling" }] 
+        },
+        { 
+            role: 'model', 
+            parts: [{ text: JSON.stringify({
+                name: "tools.sleep",
+                args: { duration: 10 }
+            })}]
+        }
+    );
+}
+
 const saveHistory = () => {
-    fs.writeFileSync(historyPath, JSON.stringify(chatHistory.slice(-100), null, 2));
+    fs.writeFileSync(historyPath, JSON.stringify(chatHistory, null, 2));
 };
 
 let pendingEvents = [];
@@ -53,13 +70,16 @@ const processEvents = async () => {
         })), ...defaultTools];
 
         // 2. Update chat history
-        eventsToProcess.forEach(events => {
-            chatHistory.push({ role: 'user', parts: [{ text: `INCOMING_EVENT: ${JSON.stringify(events)}` }] });
-        });
+        chatHistory.push({ role: 'user', parts: [{ text: `INCOMING_EVENT: ${JSON.stringify(combinedContent)}` }] });
         
-        const messages = chatHistory.slice(-100);
+        let messages = chatHistory.slice(-100);
 
-        let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling if needed.
+        // Ensure history ALWAYS starts with a 'user' role for LLM compatibility
+        while (messages.length > 0 && messages[0].role !== 'user') {
+            messages.shift();
+        }
+
+        let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
 To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.`;
 
         if (fs.existsSync(instructionPath)) {
@@ -88,24 +108,41 @@ To ignore or when there is nothing to do, just go to tool.sleep to skip the time
         });
 
         for await (const chunkGenerator of stream) {
-            let accumulated = {};
             for await (const part of chunkGenerator) {
-                if (part.text) {
-                    accumulated.text = (accumulated.text || '') + part.text;
-                }
-                if (part.functionCall) {
-                    accumulated.functionCall = part.functionCall;
-                }
-
+                console.log(part);
                 if (part.done) {
-                    const result = accumulated;
-                    if (result.functionCall) {
-                        chatHistory.push({ role: 'model', parts: [{ functionCall: result.functionCall }] });
+                    // Check if text contains JSON-formatted function call
+                    let functionCallToExecute = part.functionCall;
+                    
+                    if (part.text && !functionCallToExecute) {
+                        try {
+                            const parsed = JSON.parse(part.text);
+                            if (parsed && parsed.name && parsed.args) {
+                                functionCallToExecute = parsed;
+                                console.log('🤖 Parsed JSON function call from text');
+                            }
+                        } catch (e) {
+                            // Not JSON or not a function call, treat as regular text
+                        }
+                    }
+
+                    if (part.text && !functionCallToExecute) {
+                        pendingEvents.push({
+                            eventName: 'warning',
+                            from: 'agent',
+                            message: `LLM output was not a function call: ${part.text}. Please use function calling.`
+                        });
+                        if (debounceTimer) clearTimeout(debounceTimer);
+                        processEvents();
+                    }
+
+                    if (functionCallToExecute) {
+                        chatHistory.push({ role: 'model', parts: [{ text: JSON.stringify(functionCallToExecute) }] });
                         saveHistory();
 
-                        const fullName = result.functionCall.name;
+                        const fullName = functionCallToExecute.name;
                         const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
-                        const args = result.functionCall.args;
+                        const args = functionCallToExecute.args;
                         
                         console.log(`🤖 AI calling ${targetApp} -> ${toolName} with`, args);
 
@@ -122,16 +159,6 @@ To ignore or when there is nothing to do, just go to tool.sleep to skip the time
                             }
                             
                             console.log(`🤖 Tool [${fullName}] response:`, toolRes);
-                            chatHistory.push({ 
-                                role: 'user', 
-                                parts: [{ 
-                                    functionResponse: { 
-                                        name: fullName, 
-                                        response: { output: JSON.stringify(toolRes) } 
-                                    } 
-                                }] 
-                            });
-                            saveHistory();
 
                             console.log(`🤖 Tool result received for ${fullName}. Triggering immediate event loop...`);
                             pendingEvents.push({

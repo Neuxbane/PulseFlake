@@ -1,2 +1,2 @@
-This system runs on Event-Driven. No Naked Text, use function calling if needed.
+This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
 To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
