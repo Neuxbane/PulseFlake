@@ -9,8 +9,11 @@ An OpenPulse app is a standalone Node.js process. It communicates with other app
 ### **Understanding UnixSocket**
 The `UnixSocket` class provides the high-level API for our IPC (Inter-Process Communication):
 
-*   **`constructor(identifier)`**: Creates a socket named `identifier.sock`.
-*   **`server.connect(targetSocketPath, callback)`**: Connects to another app. It features an **automatic retry mechanism**, making it safe to start apps in any order. The `callback` is triggered on every successful (re)connection.
+*   **`constructor(identifier)`**: Creates a local socket named `identifier.sock`.
+*   **`server.connect(target)`**: Connects to another app. This is highly flexible:
+    *   **Local Sockets**: Path to a `.sock` file (e.g., `../agent/agent.sock`).
+    *   **Remote/Network TCP**: A port number (e.g., `8080`) or a TCP URL (e.g., `tcp://127.0.0.1:8080`).
+    *   **Cloud/WebSocket-like**: While it uses raw TCP streams for speed, it behaves conceptually like a WebSocket/WSS connection—maintaining a persistent, bidirectional link with automatic reconnection and event-based messaging.
 *   **`server.listen(fromIdentifier, programCode, callback)`**: Registers a handler for specific requests.
     *   `fromIdentifier`: Use `'*'` to accept requests from any app.
     *   `programCode`: Use the tool name (e.g., `'ping'`).
