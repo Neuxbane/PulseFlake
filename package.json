@@ -1,0 +1,13 @@
+{
+  "name": "my-app",
+  "type": "commonjs",
+  "imports": {
+    "#UnixSocket": "./utils/UnixSocket.js",
+    "#BaseProvider": "./utils/BaseProvider.js",
+    "#Providers": "./utils/Providers.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^16.6.1"
+  }
+}

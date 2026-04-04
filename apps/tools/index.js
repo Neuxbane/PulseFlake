@@ -1,0 +1,145 @@
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+const server = new (require('#UnixSocket'))("tools");
+
+const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
+const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview"];
+
+const provider = new (require('#Providers').GeminiProvider)({ apiKeys, models });
+
+let tools = {};
+let toolEmbeddings = {};
+
+const cosineSimilarity = (vecA, vecB) => {
+    const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
+}
+
+server.listen('*', 'register', async(req, res) => {
+  const toolName = req.from;
+  const toolInfo = req.data;
+  
+  // Store tool with its originating identifier
+  if (!tools[toolName]) tools[toolName] = [];
+  
+  // We expect toolInfo to be an array or a single tool object
+  const toolsToRegister = Array.isArray(toolInfo) ? toolInfo : [toolInfo];
+  
+  for (const info of toolsToRegister) {
+    const toolActualName = info.name;
+    const fullToolName = `${toolName}.${toolActualName}`;
+    try {
+      const vector = await provider.embed([{text: `${info.description} ${JSON.stringify(info.parameters)}`}]);
+      toolEmbeddings[fullToolName] = vector;
+      // Keep a reference to the full tool definition
+      if (!tools[toolName].find(t => t.name === toolActualName)) {
+        tools[toolName].push(info);
+      }
+      console.log(`🔧 Registered scoped tool: ${fullToolName}`);
+    } catch (err) {
+      console.error(`❌ Registration Error for ${fullToolName}:`, err.message);
+    }
+  }
+  res.send({ success: true });
+});
+
+// Sending the tools's tools
+server.listen('*', 'built-in', async(req, res) => {
+    res.send(tools['tools'].map(t => ({ ...t, name: `tools.${t.name}` })));
+});
+
+server.listen('*', 'search', async(req, res) => {
+    try {
+
+        const queryEmbedding = await provider.embed([{text: req.data}]);
+
+        const results = Object.entries(toolEmbeddings).map(([fullToolName, embedding]) => {
+            const similarity = cosineSimilarity(queryEmbedding, embedding);
+            // fullToolName is "identifier.name"
+            const [identifier, name] = fullToolName.split('.');
+            // Find the original definition
+            const definition = tools[identifier]?.find(t => t.name === name);
+            return { 
+                fullName: fullToolName, 
+                identifier, 
+                name, 
+                similarity,
+                definition
+            };
+        }).sort((a, b) => b.similarity - a.similarity).slice(0, 10); // Return top 10 results
+        
+        res.send(results);
+    } catch (err) {
+        console.error(`[tools] Search error:`, err.message);
+        res.send([]);
+    }
+});
+
+server.listen('*', 'sleep', async(req, res) => {
+    const { duration, until } = req.data;
+    let sleepTime = 0;
+
+    if (duration) {
+        sleepTime = duration * 1000;
+    } else if (until) {
+        const untilTime = new Date(until).getTime();
+        const now = Date.now();
+        sleepTime = untilTime - now;
+    }
+
+    if (sleepTime > 0) {
+        console.log(`🛠️ Sleeping for ${sleepTime} ms...`);
+        await new Promise(r => setTimeout(r, sleepTime));
+    }
+
+    res.send({ success: true });
+});
+
+server.start().then(() => {
+    console.log('🛠️  Tools server is running and ready to accept registrations and searches.');
+
+    // No need to call server.request here, as we are the server.
+    // Instead, we just manually populate the tools object.
+    const internalTools = [
+        {
+            name: 'sleep',
+            description: 'Sleep for a specified duration',
+            parameters: {
+                type: 'object',
+                properties: {
+                    duration: { type: 'number', description: 'Duration in seconds' },
+                    until: { type: 'string', description: 'Sleep until a specific ISO timestamp' }
+                },
+                oneOf: [
+                    { required: ['duration'] },
+                    { required: ['until'] }
+                ]
+            }
+        },
+        {
+            name: 'search',
+            description: 'Search for tools relevant to a query',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query' }
+                },
+                required: ['query']
+            }
+        }
+    ];
+
+    tools['tools'] = internalTools;
+    for (const info of internalTools) {
+        const fullToolName = `tools.${info.name}`;
+        provider.embed([{text: `${info.description} ${JSON.stringify(info.parameters)}`}]).then(embedding => {
+            if (embedding && embedding[0] && embedding[0].embedding) {
+                toolEmbeddings[fullToolName] = embedding[0].embedding;
+                console.log(`🔧 Registered internal tool: ${fullToolName}`);
+            }
+        });
+    }
+}).catch(err => {
+    console.error('❌ Failed to start tools server:', err);
+});

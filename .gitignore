@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Sockets
+*.sock
+apps/**/*.sock
+
+# Configs & Logs
+.env
+*.log
+npm-debug.log*
+
+# Application Specific Data
+apps/agent/history.json
+apps/agent/instruction.txt
+apps/university/config.json
+apps/tools/toolEmbeddings.json
+
+# System/IDE
+.DS_Store
+.vscode/
+.idea/
+dist/
+build/
+
+archived/
+
+# .wwebjs_auth/
