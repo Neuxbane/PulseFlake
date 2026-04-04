@@ -93,9 +93,9 @@ const processEvents = async () => {
             ? currentMemories.map((m, i) => `[MEMORY ${i+1}] ${m.content}`).join('\n')
             : "No memories stored.";
 
-        // Ensure history ALWAYS starts with a 'user' role for LLM compatibility
-        while (messages.length > 0 && messages[0].role !== 'user') {
-            messages.shift();
+        // Ensure the very old messages start with user
+        if (messages.length > 0 && messages[0].role !== 'user') {
+            messages.unshift({ role: 'user', parts: [{ text: "System Initialized. You are in Event-Driven System Architecture. We only accept using Function Calling" }] });
         }
 
         let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
