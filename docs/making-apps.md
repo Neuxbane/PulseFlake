@@ -1,10 +1,10 @@
-# Developer Guide: Building Apps for OpenPulse💕
+# Developer Guide: Building Apps for PulseFlake💕
 
-OpenPulse is designed to be highly modular. New features should be built as independent "apps" that communicate via Unix Sockets.
+PulseFlake is designed to be highly modular. New features should be built as independent "apps" that communicate via Unix Sockets.
 
 ## 🏗️ Basic App Structure
 
-An OpenPulse app is a standalone Node.js process. It communicates with other apps using the `UnixSocket` utility found in `utils/UnixSocket.js`.
+An PulseFlake app is a standalone Node.js process. It communicates with other apps using the `UnixSocket` utility found in `utils/UnixSocket.js`.
 
 ### **Understanding UnixSocket**
 The `UnixSocket` class provides the high-level API for our IPC (Inter-Process Communication):

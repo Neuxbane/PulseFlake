@@ -1,10 +1,10 @@
 # Developer Guide: Adding AI Providers
 
-OpenPulse uses a provider-based system to remain model-agnostic. All providers should extend the `BaseProvider` class.
+PulseFlake uses a provider-based system to remain model-agnostic. All providers should extend the `BaseProvider` class.
 
 ## 🏛️ Understanding BaseProvider
 
-All AI logic in OpenPulse flows through the `BaseProvider` found in `utils/BaseProvider.js`. It defines a common interface that ensures the Agent can swap between Google Gemini, OpenAI, or local models without code changes.
+All AI logic in PulseFlake flows through the `BaseProvider` found in `utils/BaseProvider.js`. It defines a common interface that ensures the Agent can swap between Google Gemini, OpenAI, or local models without code changes.
 
 ### **Core Interface Methods**
 
