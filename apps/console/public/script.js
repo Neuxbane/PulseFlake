@@ -162,6 +162,23 @@ function selectService(socketPath) {
 function renderTools(socketPath) {
     const container = document.getElementById('tool-explorer');
     const tools = servicesData[socketPath] || [];
+
+    // Store existing input values and results to persist them across re-renders
+    const savedStates = {};
+    container.querySelectorAll('[data-tool-id]').forEach(card => {
+        const toolId = card.getAttribute('data-tool-id');
+        const inputs = {};
+        card.querySelectorAll('.tool-inputs input').forEach(input => {
+            inputs[input.dataset.name] = input.value;
+        });
+        const resultBox = card.querySelector('.tool-result');
+        savedStates[toolId] = {
+            inputs,
+            resultHtml: resultBox.innerHTML,
+            resultHidden: resultBox.classList.contains('hidden')
+        };
+    });
+
     container.innerHTML = '';
 
     if (tools.length === 0) {
@@ -170,18 +187,23 @@ function renderTools(socketPath) {
     }
 
     tools.forEach(tool => {
+        const toolId = `${socketPath}-${tool.name}`;
+        const savedState = savedStates[toolId] || { inputs: {}, resultHtml: '', resultHidden: true };
         const card = document.createElement('div');
+        card.setAttribute('data-tool-id', toolId);
         card.className = "bg-gray-900 border border-gray-800 rounded-2xl p-6 hover:border-pink-900/50 transition-all shadow-lg";
         
         let fieldsHtml = '';
         if (tool.parameters && tool.parameters.properties) {
             Object.entries(tool.parameters.properties).forEach(([name, schema]) => {
+                const savedValue = savedState.inputs[name] || '';
                 fieldsHtml += `
                     <div class="space-y-1">
                         <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold">${name}${tool.parameters.required?.includes(name) ? '*' : ''}</label>
                         <input type="${schema.type === 'number' ? 'number' : 'text'}" 
                                data-name="${name}" 
                                data-type="${schema.type}"
+                               value="${savedValue}"
                                placeholder="${schema.description || ''}" 
                                class="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-xs focus:border-pink-600 outline-none transition-all">
                     </div>
@@ -200,7 +222,7 @@ function renderTools(socketPath) {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 tool-inputs">
                 ${fieldsHtml}
             </div>
-            <div class="mt-4 hidden tool-result p-3 bg-black rounded-lg border border-gray-800 font-mono text-[10px] overflow-x-auto"></div>
+            <div class="mt-4 ${savedState.resultHidden ? 'hidden' : ''} tool-result p-3 bg-black rounded-lg border border-gray-800 font-mono text-[10px] overflow-x-auto">${savedState.resultHtml}</div>
         `;
         container.appendChild(card);
     });

@@ -47,7 +47,7 @@ client.once('ready', () => {
                     properties: {
                         channelId: { type: 'string', description: 'The ID of the channel to send the message to.' },
                         content: { type: 'string', description: 'Message content to send' },
-                        files: { type: 'array', items: { type: 'string' }, description: 'A list of absolute file paths to upload as attachments.' }
+                        files: { type: 'array', items: { type: 'string' }, description: 'A list of absolute file paths to upload as attachments. could be image' }
                     },
                     required: ['channelId', 'content']
                 }

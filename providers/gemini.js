@@ -42,6 +42,8 @@ class GeminiProvider extends BaseProvider {
             safetySettings, 
             generationConfig,
             thinkingConfig,
+            responseModalities,
+            imageConfig,
             signal 
         } = options;
 
@@ -98,7 +100,9 @@ class GeminiProvider extends BaseProvider {
                         safetySettings,
                         generationConfig,
                         systemInstruction: sysInst,
-                        thinkingConfig
+                        thinkingConfig,
+                        responseModalities,
+                        imageConfig
                     }
                 });
 
@@ -116,7 +120,7 @@ class GeminiProvider extends BaseProvider {
 
                         for await (const chunk of response) {
                             // print chunck
-                            // console.log(`[GeminiProvider] Received chunk:`, chunk);
+                            console.log(`[GeminiProvider] Received chunk:`, chunk);
                             if (signal?.aborted) break;
 
                             const parts = [];
@@ -139,6 +143,14 @@ class GeminiProvider extends BaseProvider {
                                 }
                             }
                             
+                            if (chunk.candidates?.[0]?.content?.parts) {
+                                for (const part of chunk.candidates[0].content.parts) {
+                                    if (part.inlineData) {
+                                        parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
+                                    }
+                                }
+                            }
+
                             if (chunk.functionCalls) {
                                 for (const call of chunk.functionCalls) {
                                     parts.push({ type: 'functionCall', data: { functionCall: call }, done: isStreamEnding });
@@ -237,10 +249,18 @@ class GeminiProvider extends BaseProvider {
                             const hasMoreOfSameType = currentQueue.length > 0 && currentQueue[0].type === partType;
                             const isFinished = !hasMoreOfSameType && streamEnded;
 
-                            // Yield with done: true only if this is the final state
-                            yield { ...accumulated, done: isFinished };
+                            if (partType === 'text') {
+                                yield { text: currentPart.data.text, done: isFinished };
+                            } else if (partType === 'image') {
+                                yield { inlineData: currentPart.data.inlineData, done: isFinished };
+                            } else {
+                                yield { functionCall: currentPart.data.functionCall, done: isFinished };
+                            }
 
-                            if (isFinished) break;
+                            if (isFinished) {
+                                yield { result: accumulated, done: true };
+                                break;
+                            }
                         }
                         
                         return accumulated;
@@ -251,6 +271,7 @@ class GeminiProvider extends BaseProvider {
                 return; // Success
 
             } catch (e) {
+                console.error(`[GeminiProvider] ❌ Error on attempt ${attempt + 1}:`, e.message);
                 lastError = e;
                 const isRetryable = e.message.includes('429') || 
                                   e.message.includes('RESOURCE_EXHAUSTED') || 
