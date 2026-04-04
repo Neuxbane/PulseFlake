@@ -100,8 +100,8 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ### **1. Installation**
 ```bash
-git clone https://github.com/Neuxbane/OpenPulse.git
-cd OpenPulse
+git clone https://github.com/Neuxbane/PulseFlake.git
+cd PulseFlake
 npm install
 ```
 
