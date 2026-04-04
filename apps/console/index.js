@@ -35,7 +35,7 @@ app.use((req, res, next) => {
         return next();
     }
 
-    res.set('WWW-Authenticate', 'Basic realm="OpenPulse Console"');
+    res.set('WWW-Authenticate', 'Basic realm="PulseFlake Console"');
     res.status(401).send('Authentication required.');
 });
 

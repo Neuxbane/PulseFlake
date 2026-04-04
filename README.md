@@ -92,7 +92,7 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 | **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
 | **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
 | **Console** 🎛️ | A web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. |
-| **Template** 📂 | A boilerplate for quickly spinning up new OpenPulse micro-apps. |
+| **Template** 📂 | A boilerplate for quickly spinning up new PulseFlake micro-apps. |
 
 ---
 
@@ -132,7 +132,7 @@ node apps/internet/index.js
 
 ## 🛠️ Development & Contributions
 
-OpenPulse is built to be extended. Whether you want to add new capabilities or support new AI models, follow the guides below:
+PulseFlake is built to be extended. Whether you want to add new capabilities or support new AI models, follow the guides below:
 
 *   **[Making New Apps](docs/making-apps.md)**: Learn how to create micro-apps that register tools and broadcast events.
 *   **[Adding AI Providers](docs/making-providers.md)**: Guide on extending the `BaseProvider` to support LLMs like OpenAI, Anthropic, or local Ollama instances.
