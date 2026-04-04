@@ -1,12 +1,12 @@
-# OpenPulse💕
+# PulseFlake💕
 
-**OpenPulse** (formerly **FuckingLonely**) is a decentralized, **Event-Driven Reactive AI** ecosystem. It is designed to bridge **Multi-Modal Large Language Models (MLLM)** with real-world applications through a high-performance **Unix Socket IPC** layer.
+**PulseFlake** (formerly **FuckingLonely**) is a decentralized, **Event-Driven Reactive AI** ecosystem. It is designed to bridge **Multi-Modal Large Language Models (MLLM)** with real-world applications through a high-performance **Unix Socket IPC** layer.
 
-By decoupling the AI "brain" from its "sensors" and "tools," OpenPulse enables modular, scalable, and highly reactive autonomous agents that can process multi-modal events and orchestrate complex tool-driven workflows.
+By decoupling the AI "brain" from its "sensors" and "tools," PulseFlake enables modular, scalable, and highly reactive autonomous agents that can process multi-modal events and orchestrate complex tool-driven workflows.
 
 ## 🏗️ Technical Architecture
 
-OpenPulse is built on a modular, event-driven architecture using **Unix Socket IPC** for high-performance communication between independent processes.
+PulseFlake is built on a modular, event-driven architecture using **Unix Socket IPC** for high-performance communication between independent processes.
 
 ### **The Core Philosophy: "Everything is a Socket"**
 
@@ -49,7 +49,7 @@ Every micro-app follows a standard lifecycle enabled by the `UnixSocket` utility
 
 ---
 
-## 📖 The Story of OpenPulse
+## 📖 The Story of PulseFlake
 
 The project began as a personal endeavor to bridge the gap between AI and daily digital life, evolving through several stages of architectural complexity.
 
@@ -65,9 +65,9 @@ The project began as a personal endeavor to bridge the gap between AI and daily 
     Version 3 introduced the concept of a "Bus" for inter-process communication. By Version 4, the system started splitting into specialized folders for `ai`, `discord`, `internet`, and `system` tasks, moving away from a single script.
 
 *   **V5: The Final Prototype (March 2026)**  
-    V5 refined the provider system (supporting various Gemini models) and perfected the scraper logic (like the University portal). It was the most stable version before the current transition to the **OpenPulse** architecture.
+    V5 refined the provider system (supporting various Gemini models) and perfected the scraper logic (like the University portal). It was the most stable version before the current transition to the **PulseFlake** architecture.
 
-*   **OpenPulse💕 (Current)**  
+*   **PulseFlake💕 (Current)**  
     The latest evolution. A fully decentralized micro-app ecosystem where the Agent and Tools are distinct services, communicating via specialized Unix Sockets for maximum flexibility and performance.
 
 ---

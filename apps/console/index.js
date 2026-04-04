@@ -219,7 +219,7 @@ io.on('connection', (socket) => {
 
 // --- 4. START ---
 httpServer.listen(PORT, () => {
-    console.log(`🚀 OpenPulse Console active at http://localhost:${PORT}`);
+    console.log(`🚀 PulseFlake Console active at http://localhost:${PORT}`);
 });
 
 server.start();
