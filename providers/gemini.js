@@ -13,6 +13,19 @@ class GeminiProvider extends BaseProvider {
         this.models = config.models || ["gemini-3.1-flash-lite-preview"];
         this.currentApiKeyIndex = 0;
         this.currentModelIndex = 0;
+        this.lastCallTime = 0;
+        this.minWaitMs = config.minWaitMs || 5000; // Default 3 seconds
+    }
+
+    async _waitForRateLimit() {
+        const now = Date.now();
+        const elapsed = now - this.lastCallTime;
+        if (elapsed < this.minWaitMs) {
+            const waitTime = this.minWaitMs - elapsed;
+            console.log(`[GeminiProvider] ⏳ Rate limiting: waiting ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+        this.lastCallTime = Date.now();
     }
 
     _getNextTarget() {
@@ -52,6 +65,8 @@ class GeminiProvider extends BaseProvider {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             if (signal?.aborted) throw new Error('canceled');
+            
+            await this._waitForRateLimit();
             
             const { apiKey, model: targetModel } = this._getNextTarget();
             console.log(`[GeminiProvider] 🚀 Attempt ${attempt + 1} using model: ${targetModel}`);
@@ -291,6 +306,8 @@ class GeminiProvider extends BaseProvider {
      */
     async embed(parts, options = {}) {
         const { model: targetModel = "gemini-embedding-2-preview" } = options;
+
+        await this._waitForRateLimit();
 
         const { apiKey } = this._getNextTarget();
         const ai = new GoogleGenAI({ apiKey });

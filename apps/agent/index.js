@@ -242,6 +242,9 @@ ${memoryContext}`;
                                 }
                             } else {
                                 const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
+                                if (!fs.existsSync(socketPath)) {
+                                    throw new Error(`No app or socket found for "${targetApp}"`);
+                                }
                                 await server.connect(socketPath);
                                 toolRes = await server.request(targetApp, toolName, args);
                             }
@@ -259,6 +262,13 @@ ${memoryContext}`;
                             processEvents();
                         } catch (err) {
                             console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
+                            pendingEvents.push({
+                                eventName: 'warning',
+                                from: 'agent',
+                                message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
+                            });
+                            if (debounceTimer) clearTimeout(debounceTimer);
+                            processEvents();
                         }
                     }
                 }
