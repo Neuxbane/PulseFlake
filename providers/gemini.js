@@ -135,7 +135,7 @@ class GeminiProvider extends BaseProvider {
 
                         for await (const chunk of response) {
                             // print chunck
-                            console.log(`[GeminiProvider] Received chunk:`, chunk);
+                            console.log(`[GeminiProvider] Received chunk:`, JSON.stringify(chunk.candidates?.[0]?.content));
                             if (signal?.aborted) break;
 
                             const parts = [];
@@ -144,31 +144,16 @@ class GeminiProvider extends BaseProvider {
                             const isStreamEnding = chunk.candidates?.[0]?.finishReason === 'STOP';
                             
                             // Native extraction as per @google/genai documentation
-                            if (chunk.text && (typeof chunk.text === 'function' || typeof chunk.text === 'string')) {
-                                let textValue;
-                                try {
-                                    textValue = typeof chunk.text === 'function' ? chunk.text() : chunk.text;
-                                } catch (e) {}
-                                
-                                if (textValue) {
-                                    // If previous part was text, many implementations prefer appending
-                                    // but our generator logic yields distinct generators for different "types"
-                                    // The issue is if Gemini emits Text -> FunctionCall -> Text.
-                                    parts.push({ type: 'text', data: { text: textValue }, done: isStreamEnding });
-                                }
-                            }
-                            
-                            if (chunk.candidates?.[0]?.content?.parts) {
-                                for (const part of chunk.candidates[0].content.parts) {
-                                    if (part.inlineData) {
+                            const contentCandidate = chunk.candidates?.[0]?.content;
+                            if (contentCandidate && contentCandidate.parts) {
+                                for (const part of contentCandidate.parts) {
+                                    if (part.text) {
+                                        parts.push({ type: 'text', data: { text: part.text }, done: isStreamEnding });
+                                    } else if (part.inlineData) {
                                         parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
+                                    } else if (part.functionCall) {
+                                        parts.push({ type: 'functionCall', data: { functionCall: part.functionCall }, done: isStreamEnding });
                                     }
-                                }
-                            }
-
-                            if (chunk.functionCalls) {
-                                for (const call of chunk.functionCalls) {
-                                    parts.push({ type: 'functionCall', data: { functionCall: call }, done: isStreamEnding });
                                 }
                             }
 
@@ -241,6 +226,13 @@ class GeminiProvider extends BaseProvider {
                                 break;
                             }
 
+                            // CRITICAL FIX: If we are dealing with function calls, 
+                            // we should only handle ONE part per generator to avoid merging
+                            // multiple distinct function calls into a single one.
+                            if (partType === 'functionCall' && hasYielded) {
+                                break;
+                            }
+
                             // If nothing in queue and stream ended, this part is DONE
                             if (currentQueue.length === 0 && streamEnded) {
                                 if (hasYielded && Object.keys(accumulated).length > 0) {
@@ -262,7 +254,9 @@ class GeminiProvider extends BaseProvider {
 
                             // Check if there are more parts of the SAME type coming or stream is over
                             const hasMoreOfSameType = currentQueue.length > 0 && currentQueue[0].type === partType;
-                            const isFinished = !hasMoreOfSameType && streamEnded;
+                            
+                            // If it's a functionCall, we never want to merge it with the next one in the same generator
+                            const isFinished = (partType === 'functionCall') || (!hasMoreOfSameType && streamEnded);
 
                             if (partType === 'text') {
                                 yield { text: currentPart.data.text, done: isFinished };

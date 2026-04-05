@@ -200,6 +200,7 @@ ${memoryContext}`;
                         saveHistory();
 
                         const fullName = functionCallToExecute.name;
+                        console.log(`🤖 Function call detected: ${fullName}`);
                         const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
                         const args = functionCallToExecute.args;
                         

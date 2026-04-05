@@ -119,7 +119,7 @@ server.start().then(() => {
                 type: 'object',
                 properties: {
                     duration: { type: 'number', description: 'Duration in seconds' },
-                    until: { type: 'string', description: 'Sleep until a specific ISO timestamp' }
+                    until: { type: 'string', description: 'Sleep until a specific ISO timestamp, please be aware about the timezone' }
                 },
                 oneOf: [
                     { required: ['duration'] },
