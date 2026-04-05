@@ -96,27 +96,36 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
-## 🎯 Use Case: The "Proactive Student" Assistant
+## 🎯 Generic Use Case: Multi-Agent Orchestration
 
-To understand how PulseFlake works in the real world, consider how it solves the problem of student academic management:
+PulseFlake is designed to solve the problem of **disconnected digital tools**. In most systems, your Calendar, your Chat, and your Code projects don't talk to each other. PulseFlake bridges them using the **Generic Tool Pattern**.
 
-### **The Problem**
-Students often miss deadlines or forget to check course updates because university portals (like Moodle) are separate from their primary communication channels (Discord/Telegram).
+### **The Real-World Problem**
+Imagine you are working on a code project and a critical bug is reported in your Discord. You need to:
+1.  Check the error logs.
+2.  Search documentation for a fix.
+3.  Deploy a patch.
+4.  Update the user on Discord.
 
-### **The PulseFlake Solution**
-The **University App** acts as a bridge, while the **Agent** acts as the proactive brain.
+Normally, this requires manual switching between 4-5 different apps.
 
-1.  **Scheduled Polling**: The system (via a scheduler or idle trigger) prompts the `University` app to `getTasks`.
-2.  **Contextual Awareness**: The `Agent` receives the task list (e.g., "AI Ethics Essay due in 2 hours").
-3.  **Cross-App Orchestration**:
-    *   The `Agent` searches the `Internet` for recent AI ethics news to provide a "starting point."
-    *   The `Agent` formats a warning and sends it to the student via the `Discord` app.
-    *   The student can reply on Discord: "Summarize the lesson notes for that course," and the `Agent` will call `getCourseContent` on the `University` app to fulfill the request.
+### **The PulseFlake Solution (The "Flow")**
+Because PulseFlake uses a **Decoupled Architecture**, you can add any tool without rebuilding the core:
 
-### **Implementation Details**
-*   **Security**: Credentials are encrypted or managed via `config.json` within the isolated `University` process.
-*   **Modularity**: If the university changes its portal, only the `University` app's scraper ([apps/university/class.js](apps/university/class.js)) needs an update; the Agent and Discord integration remain untouched.
-*   **Multi-Modal**: The Agent can process PDF syllabus files uploaded to Discord (via the Gemini provider) and cross-reference them with portal deadlines.
+1.  **Event Reception**: A `Monitoring App` listens for errors and broadcasts an event to the `Agent`.
+2.  **Autonomous Decision**: The `Agent` queries the `Tools Registry` for a "Search" tool and "File Reader" tool.
+3.  **Cross-Socket Execution**:
+    *   The `Agent` calls the `Filesystem App` to read the log files.
+    *   It calls the `Internet App` to search for the specific error signature.
+    *   It generates a summary and sends it back to the `Discord App`.
+4.  **Action Persistence**: Every step is recorded in a shared `Memory` layer, so the Agent "remembers" it already tried searching for that specific bug.
+
+### **Core Implementation Pattern**
+To implement any real-world solution, you only need to follow this pattern:
+
+*   **Define the Capability**: Create a JSON schema for your tool (e.g., `execute_ssh_command`).
+*   **Expose the Socket**: Use `UnixSocket.js` to listen for that capability name.
+*   **Register & Forget**: Once registered in the `Tools Registry`, the `Agent` will automatically discover and use your tool whenever the context requires it.
 
 ---
 
