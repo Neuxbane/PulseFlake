@@ -96,6 +96,30 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ---
 
+## 🎯 Use Case: The "Proactive Student" Assistant
+
+To understand how PulseFlake works in the real world, consider how it solves the problem of student academic management:
+
+### **The Problem**
+Students often miss deadlines or forget to check course updates because university portals (like Moodle) are separate from their primary communication channels (Discord/Telegram).
+
+### **The PulseFlake Solution**
+The **University App** acts as a bridge, while the **Agent** acts as the proactive brain.
+
+1.  **Scheduled Polling**: The system (via a scheduler or idle trigger) prompts the `University` app to `getTasks`.
+2.  **Contextual Awareness**: The `Agent` receives the task list (e.g., "AI Ethics Essay due in 2 hours").
+3.  **Cross-App Orchestration**:
+    *   The `Agent` searches the `Internet` for recent AI ethics news to provide a "starting point."
+    *   The `Agent` formats a warning and sends it to the student via the `Discord` app.
+    *   The student can reply on Discord: "Summarize the lesson notes for that course," and the `Agent` will call `getCourseContent` on the `University` app to fulfill the request.
+
+### **Implementation Details**
+*   **Security**: Credentials are encrypted or managed via `config.json` within the isolated `University` process.
+*   **Modularity**: If the university changes its portal, only the `University` app's scraper ([apps/university/class.js](apps/university/class.js)) needs an update; the Agent and Discord integration remain untouched.
+*   **Multi-Modal**: The Agent can process PDF syllabus files uploaded to Discord (via the Gemini provider) and cross-reference them with portal deadlines.
+
+---
+
 ## ⚡ Quick Start
 
 ### **1. Installation**
