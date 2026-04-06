@@ -88,6 +88,7 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 | :--- | :--- |
 | **Agent** 🤖 | The brain. Processes incoming events and determines the best course of action using tool-calling. |
 | **Discord** 💬 | A bridge between Discord channels/DMs and the Agent. Broadcasts messages as events. |
+| **WhatsApp** 📱 | A bridge for WhatsApp Messenger. Supports reading chats, sending messages, and session management. |
 | **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
 | **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
 | **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
