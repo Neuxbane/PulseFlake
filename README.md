@@ -98,6 +98,29 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 ## 🎯 Generic Use Case: Multi-Agent Orchestration
 
+PulseFlake supports **Recursive Multi-Agent Orchestration**. The main Agent can spawn **Sub-Agents** to handle complex, long-running, or isolated sub-tasks.
+
+### **Sub-Agent Workflow**
+1.  **Spawn**: The Main Agent calls `agent.spawnSubagent({ goal: "Task description" })`.
+2.  **Isolation**: The Sub-Agent receives the goal and its own tool-calling loop. It does **not** hear global system events, ensuring focus.
+3.  **Recursive**: Sub-Agents can spawn their own nested Sub-Agents if a task needs further decomposition.
+4.  **Reporting**: Once finished, the Sub-Agent uses the `agent.done({ message: "Result" })` tool to report back to its parent and terminate.
+
+---
+
+## 🚀 Getting Started
+
+1.  **Clone & Install**: `npm install`
+2.  **Environment Setup**: Create a `.env` file with your `GEMINI_API_KEYS`.
+3.  **Launch the System**: Run individual apps (e.g., `node apps/agent/index.js`, `node apps/discord/index.js`, etc.).
+4.  **Interact**: Use the Discord bridge or the Console to begin interacting with the Agent.
+
+---
+
+## 🛡️ License
+
+MIT License. Designed with ❤️ for the future of decentralized AI.
+
 PulseFlake is designed to solve the problem of **disconnected digital tools**. In most systems, your Calendar, your Chat, and your Code projects don't talk to each other. PulseFlake bridges them using the **Generic Tool Pattern**.
 
 ### **The Real-World Problem**

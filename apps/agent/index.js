@@ -54,6 +54,135 @@ const saveHistory = () => {
     fs.writeFileSync(historyPath, JSON.stringify(chatHistory, null, 2));
 };
 
+class SubAgent {
+    constructor(id, parentId, instruction, goal, toolsForAI, parentResolve) {
+        this.id = id;
+        this.parentId = parentId;
+        this.instruction = instruction;
+        this.goal = goal;
+        this.toolsForAI = toolsForAI;
+        this.parentResolve = parentResolve;
+        this.history = [
+            { role: 'user', parts: [{ text: `Sub-agent initialized. Goal: ${goal}` }] }
+        ];
+        this.isRunning = true;
+    }
+
+    async run() {
+        console.log(`🤖 [SubAgent ${this.id}] Starting...`);
+        while (this.isRunning) {
+            try {
+                const systemInstruction = `${this.instruction}\n\n### SUB-AGENT GOAL\n${this.goal}\n\nYou are a sub-agent. When your task is complete or you have a final report, use \`agent.done\` to finish and report back to your parent.`;
+                
+                const stream = provider.generate(this.history, {
+                    systemInstruction,
+                    thinkingConfig: { include_thoughts: true },
+                    tools: [
+                        ...this.toolsForAI,
+                        {
+                            name: 'agent.done',
+                            description: 'Finish the sub-agent task and report the result back to the parent agent.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    message: { type: 'string', description: 'The final report or result message.' }
+                                },
+                                required: ['message']
+                            }
+                        }
+                    ]
+                });
+
+                let toolCallResult = null;
+
+                for await (const chunkGenerator of stream) {
+                    for await (const part of chunkGenerator) {
+                        if (part.done) {
+                            let functionCall = part.functionCall;
+                            if (part.text && !functionCall) {
+                                try {
+                                    const parsed = JSON.parse(part.text);
+                                    if (parsed && parsed.name && parsed.args) functionCall = parsed;
+                                } catch (e) {}
+                            }
+
+                            if (functionCall) {
+                                this.history.push({ role: 'model', parts: [{ text: JSON.stringify(functionCall) }] });
+                                console.log(`🤖 [SubAgent ${this.id}] Calling ${functionCall.name}`);
+
+                                if (functionCall.name === 'agent.done') {
+                                    this.isRunning = false;
+                                    this.parentResolve(functionCall.args.message);
+                                    return;
+                                }
+
+                                // Execute normal tools
+                                const [targetApp, toolName] = functionCall.name.includes('.') ? functionCall.name.split('.') : ['unknown', functionCall.name];
+                                try {
+                                    let res;
+                                    if (functionCall.name === 'agent.spawnSubagent') {
+                                        res = await handleSpawnSubagent(functionCall.args, this.id);
+                                    } else {
+                                        const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
+                                        if (!fs.existsSync(socketPath)) throw new Error(`No app or socket found for "${targetApp}"`);
+                                        await server.connect(socketPath);
+                                        res = await server.request(targetApp, toolName, functionCall.args);
+                                    }
+                                    this.history.push({ 
+                                        role: 'user', 
+                                        parts: [{ text: `TOOL_RESULT [${functionCall.name}]: ${JSON.stringify(res)}` }] 
+                                    });
+                                } catch (err) {
+                                    this.history.push({ 
+                                        role: 'user', 
+                                        parts: [{ text: `TOOL_ERROR [${functionCall.name}]: ${err.message}` }] 
+                                    });
+                                }
+                            } else if (part.text) {
+                                this.history.push({ role: 'model', parts: [{ text: part.text }] });
+                                this.history.push({ role: 'user', parts: [{ text: "Please use function calling to perform actions or finish the task with agent.done." }] });
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`🤖 [SubAgent ${this.id}] Error:`, err);
+                this.isRunning = false;
+                this.parentResolve(`Error in sub-agent: ${err.message}`);
+            }
+        }
+    }
+}
+
+const subAgents = new Map();
+let subAgentCounter = 0;
+
+async function handleSpawnSubagent(args, parentId = 'main') {
+    const id = ++subAgentCounter;
+    console.log(`🤖 Agent spawning sub-agent ${id} (parent: ${parentId}) with goal: ${args.goal}`);
+    
+    // Pass along the same tools availability for now, ideally search again or pass filtered
+    const defaultTools = await server.request('tools', 'built-in');
+    const searchResults = await server.request('tools', 'search', args.goal);
+    const toolsForAI = [...searchResults.slice(0, 10).map(r => ({
+        name: `${r.identifier}.${r.name}`,
+        description: r.definition.description,
+        parameters: r.definition.parameters
+    })), ...defaultTools];
+
+    // Read current instruction for the sub-agent
+    let baseInstruction = "";
+    if (fs.existsSync(instructionPath)) {
+        baseInstruction = fs.readFileSync(instructionPath, 'utf8');
+    }
+
+    return new Promise((resolve) => {
+        const sub = new SubAgent(id, parentId, baseInstruction, args.goal, toolsForAI, resolve);
+        subAgents.set(id, sub);
+        sub.run().then(() => subAgents.delete(id));
+    });
+}
+
 let pendingEvents = [];
 let debounceTimer = null;
 const DEBOUNCE_DELAY = 5000; // 5 seconds
@@ -128,6 +257,17 @@ ${memoryContext}`;
                             instruction: { type: 'string', description: 'The new system instruction' }
                         },
                         required: ['instruction']
+                    }
+                },
+                { 
+                    name: 'agent.spawnSubagent',
+                    description: 'Spawn a sub-agent to handle a specific sub-task. It will run based on instructions and report back.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            goal: { type: 'string', description: 'The specific sub-task goal for the sub-agent.' }
+                        },
+                        required: ['goal']
                     }
                 },
                 {
@@ -212,6 +352,8 @@ ${memoryContext}`;
                                 fs.writeFileSync(instructionPath, args.instruction);
                                 toolRes = { success: true, message: 'Instruction updated.' };
                                 console.log('🤖 System instruction updated.');
+                            } else if (fullName === 'agent.spawnSubagent') {
+                                toolRes = await handleSpawnSubagent(args, 'main');
                             } else if (fullName === 'agent.addMemory') {
                                 const memories = getMemories();
                                 if (memories.length >= 20) {
