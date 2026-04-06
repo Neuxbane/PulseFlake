@@ -10,7 +10,7 @@ class GeminiProvider extends BaseProvider {
     constructor(config = {}) {
         super(config);
         this.apiKeys = config.apiKeys || [];
-        this.models = config.models || ["gemini-3.1-flash-lite-preview"];
+        this.models = config.models || ["gemini-3.1-flash-lite-preview", "gemma-4-31b-it"];
         this.currentApiKeyIndex = 0;
         this.currentModelIndex = 0;
         this.lastCallTime = 0;

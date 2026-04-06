@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
-const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview"];
+const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview","gemma-4-31b-it"];
 
 const provider = new GeminiProvider({ apiKeys, models });
 
@@ -186,10 +186,12 @@ async function handleSpawnSubagent(args, parentId = 'main') {
 let pendingEvents = [];
 let debounceTimer = null;
 const DEBOUNCE_DELAY = 5000; // 5 seconds
+let isProcessing = false;
 
 const processEvents = async () => {
-    if (pendingEvents.length === 0) return;
+    if (pendingEvents.length === 0 || isProcessing) return;
     
+    isProcessing = true;
     const eventsToProcess = [...pendingEvents];
     pendingEvents = [];
     
@@ -405,6 +407,13 @@ ${memoryContext}`;
         }
     } catch (err) {
         console.error('🤖 Batch Process Error:', err);
+    } finally {
+        isProcessing = false;
+        // Check if new events arrived during processing
+        if (pendingEvents.length > 0) {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
+        }
     }
 };
 
