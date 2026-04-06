@@ -51,6 +51,19 @@ client.once('ready', () => {
                     },
                     required: ['channelId', 'content']
                 }
+            },
+            {
+                name: 'addReaction',
+                description: 'Add a reaction (emoji) to a specific message in a channel.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel where the message is.' },
+                        messageId: { type: 'string', description: 'The ID of the message to react to.' },
+                        emoji: { type: 'string', description: 'The emoji to react with (e.g., "👍", "❤️", or a custom emoji name/ID).' }
+                    },
+                    required: ['channelId', 'messageId', 'emoji']
+                }
             }
         ];
 
@@ -74,6 +87,7 @@ client.on('messageCreate', async (message) => {
         author: message.author.username,
         authorId: message.author.id,
         content: message.content,
+        messageId: message.id,
         channelId: message.channel.id,
         channelName: message.channel.name || 'DM',
         guildId: message.guild ? message.guild.id : null,
@@ -91,6 +105,60 @@ client.on('messageCreate', async (message) => {
     }
     
     // Broadcast generic event to anyone subscribed
+    server.broadcast('event', eventData);
+});
+
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+    if (newMessage.author.bot) return;
+    if (oldMessage.content === newMessage.content) return;
+
+    console.log(`[discord] Message edited by ${newMessage.author.username} in ${newMessage.guild ? `guild ${newMessage.guild.name}` : 'DMs'}: ${oldMessage.content} -> ${newMessage.content}`);
+
+    const eventData = {
+        type: 'discord_message_edit',
+        author: newMessage.author.username,
+        authorId: newMessage.author.id,
+        oldContent: oldMessage.content,
+        newContent: newMessage.content,
+        messageId: newMessage.id,
+        channelId: newMessage.channel.id,
+        channelName: newMessage.channel.name || 'DM',
+        guildId: newMessage.guild ? newMessage.guild.id : null,
+        guildName: newMessage.guild ? newMessage.guild.name : null,
+        isDM: !newMessage.guild,
+        timestamp: getTimeInJakarta()
+    };
+
+    server.broadcast('event', eventData);
+});
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+
+    // Partial handling
+    if (reaction.partial) {
+        try {
+            await reaction.fetch();
+        } catch (error) {
+            console.error('[discord] Error fetching partial reaction:', error);
+            return;
+        }
+    }
+
+    console.log(`[discord] Reaction added: ${reaction.emoji.name} by ${user.username} on message ${reaction.message.id}`);
+
+    const eventData = {
+        type: 'discord_reaction_add',
+        user: user.username,
+        userId: user.id,
+        emoji: reaction.emoji.name,
+        emojiId: reaction.emoji.id,
+        messageId: reaction.message.id,
+        channelId: reaction.message.channel.id,
+        guildId: reaction.message.guild ? reaction.message.guild.id : null,
+        timestamp: getTimeInJakarta()
+    };
+
     server.broadcast('event', eventData);
 });
 
@@ -133,6 +201,19 @@ server.listen('*', 'sendMessage', async (req, res) => {
         }
     } catch (err) {
         console.error('[discord] Error sending message:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'addReaction', async (req, res) => {
+    const { channelId, messageId, emoji } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        const message = await channel.messages.fetch(messageId);
+        await message.react(emoji);
+        res.send({ success: true, timestamp: getTimeInJakarta() });
+    } catch (err) {
+        console.error('[discord] Error adding reaction:', err);
         res.send({ success: false, error: err.message });
     }
 });
