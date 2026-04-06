@@ -86,13 +86,16 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 | App | Description |
 | :--- | :--- |
-| **Agent** 🤖 | The brain. Processes incoming events and determines the best course of action using tool-calling. |
-| **Discord** 💬 | A bridge between Discord channels/DMs and the Agent. Broadcasts messages as events. |
-| **WhatsApp** 📱 | A bridge for WhatsApp Messenger. Supports reading chats, sending messages, and session management. |
-| **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
+| **Agent** 🤖 | The brain. Processes incoming events and determines the best course of action using tool-calling. Supports recursive multi-agent orchestration and memory management. |
+| **Calendar** 📅 | Full-featured event management system. Supports recurring events (daily, weekly, workdays, weekend, monthly, yearly, custom), conflict detection, reminders, timelines, and timezone support. |
+| **Console** 🎛️ | Enhanced web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. Features real-time event monitoring and tool exploration. |
+| **Device** 🖥️ | System device integration for command execution, file operations, and remote connection handling. |
+| **Discord** 💬 | A bridge between Discord channels/DMs and the Agent. Supports message handling, reactions, and event broadcasting. |
+| **Imagen** 🎨 | Image generation tool using Pollinations AI. Generates images based on natural language prompts. |
 | **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
 | **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
-| **Console** 🎛️ | A web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. |
+| **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
+| **WhatsApp** 📱 | A bridge for WhatsApp Messenger. Supports reading chats, sending messages, note management, and chat summarization. |
 | **Template** 📂 | A boilerplate for quickly spinning up new PulseFlake micro-apps. |
 
 ---
@@ -183,7 +186,49 @@ node apps/agent/index.js      # Required second (Brain)
 node apps/discord/index.js
 node apps/university/index.js
 node apps/internet/index.js
+node apps/calendar/index.js
+node apps/device/index.js
 ```
+
+---
+
+## 📅 Calendar Features
+
+The **Calendar** app provides comprehensive event management with advanced scheduling capabilities:
+
+### **Core Features**
+- **Event Management**: Create, read, update, and delete calendar events.
+- **Recurring Events**: Support for multiple recurrence patterns:
+  - Built-in: `daily`, `weekly`, `workdays`, `weekend`, `monthly`, `yearly`
+  - Custom: Function-based rules like `(curr, evnt) => curr.day == evnt.day`
+- **Conflict Detection**: Prevents overlapping events based on event importance and parallelability.
+- **Reminders**: Set multiple reminder times (in seconds) before events trigger notifications to the Agent.
+- **Timeline View**: Fetch upcoming events with automatic processing of recurring patterns.
+- **Timezone Awareness**: Automatic detection and handling of system timezone.
+
+### **Event Properties**
+```javascript
+{
+  title: string,                   // Event name (required)
+  description: string,             // Markdown description
+  start: ISO8601,                  // Event start date/time
+  duration: number,                // Duration in minutes
+  repeat: string,                  // Recurrence rule
+  parallelable: boolean,           // Can overlap with other events (default: true)
+  important: boolean,              // Mark as important (default: true)
+  reminds: number[],               // Reminder times in seconds before event
+  attachments: object[],           // URLs, images, or files
+  tags: string[]                   // Event categorization
+}
+```
+
+### **Available Tools**
+- `createEvent`: Create new calendar events with conflict checking.
+- `listEvents`: Retrieve all raw event data.
+- `updateEvent`: Modify existing events.
+- `deleteEvent`: Remove events from the calendar.
+- `timeline`: Get upcoming events (automatically expands recurring patterns).
+- `getUpcomingReminders`: Fetch events with scheduled reminders.
 
 ---
 
