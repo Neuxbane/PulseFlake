@@ -30,3 +30,4 @@ archived/
 apps/console/console-history.json
 apps/agent/memory.jsonl
 apps/imagen/public/
+*copy.json

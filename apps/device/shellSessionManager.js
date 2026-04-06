@@ -137,6 +137,8 @@ class ShellSessionManager extends EventEmitter {
         // Native TCP server (Port 7779)
         const tcpServer = net.createServer((socket) => {
             console.log("[Device] Raw TCP connection...");
+            socket.setKeepAlive(true, 5000);
+            
             socket.once('data', (data) => {
                 const name = data.toString().trim().split('\n')[0].replace(/[^a-zA-Z0-9_-]/g, '');
                 if (!name) { socket.end("Identifier required\n"); return; }
@@ -144,17 +146,25 @@ class ShellSessionManager extends EventEmitter {
                 const session = { socket, type: 'tcp', outputBuffer: "" };
                 this.sessions.set(name, session);
                 
-                // 💡 Send periodic keep-alive or just ensure initial prompt is captured
-                socket.write('\n'); 
+                // Signal to the client that we are ready
+                socket.write("\n");
 
                 socket.on('data', d => {
                     session.outputBuffer += d.toString();
                     if (session.outputBuffer.length > 32768) session.outputBuffer = session.outputBuffer.slice(-32768);
                     process.stdout.write(d);
                 });
+
+                socket.on('error', (err) => {
+                    console.error(`[Device] Socket error for ${name}: ${err.message}`);
+                    if (this.sessions.get(name)?.socket === socket) this.sessions.delete(name);
+                });
+
                 socket.on('close', () => {
-                    this.sessions.delete(name);
-                    console.log("[Device] TCP Shell lost: " + name);
+                    if (this.sessions.get(name)?.socket === socket) {
+                        this.sessions.delete(name);
+                        console.log("[Device] TCP Shell lost: " + name);
+                    }
                 });
             });
         });

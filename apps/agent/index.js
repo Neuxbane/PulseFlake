@@ -248,17 +248,6 @@ ${memoryContext}`;
             thinkingConfig: { include_thoughts: true }, // Enabling thinking for Gemini 2.0+
             tools: [
                 ...toolsForAI, 
-                {
-                    name: 'agent.updateInstruction',
-                    description: 'Update the agent system instruction/personality.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            instruction: { type: 'string', description: 'The new system instruction' }
-                        },
-                        required: ['instruction']
-                    }
-                },
                 { 
                     name: 'agent.spawnSubagent',
                     description: 'Spawn a sub-agent to handle a specific sub-task. It will run based on instructions and report back.',
@@ -349,11 +338,7 @@ ${memoryContext}`;
 
                         try {
                             let toolRes;
-                            if (fullName === 'agent.updateInstruction') {
-                                fs.writeFileSync(instructionPath, args.instruction);
-                                toolRes = { success: true, message: 'Instruction updated.' };
-                                console.log('🤖 System instruction updated.');
-                            } else if (fullName === 'agent.spawnSubagent') {
+                            if (fullName === 'agent.spawnSubagent') {
                                 toolRes = await handleSpawnSubagent(args, 'main');
                             } else if (fullName === 'agent.addMemory') {
                                 const memories = getMemories();
