@@ -53,7 +53,7 @@ const searchHandler = async (params) => {
             }
         });
 
-        return results.slice(0, 5);
+        return results;
     } catch (err) {
         console.error(`🌐 Search error: ${err.message}`);
         return { error: err.message };

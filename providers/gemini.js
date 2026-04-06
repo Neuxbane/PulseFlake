@@ -147,7 +147,9 @@ class GeminiProvider extends BaseProvider {
                             const contentCandidate = chunk.candidates?.[0]?.content;
                             if (contentCandidate && contentCandidate.parts) {
                                 for (const part of contentCandidate.parts) {
-                                    if (part.text) {
+                                    if (part.thought) {
+                                        parts.push({ type: 'thought', data: { thought: part.text }, done: isStreamEnding });
+                                    } else if (part.text) {
                                         parts.push({ type: 'text', data: { text: part.text }, done: isStreamEnding });
                                     } else if (part.inlineData) {
                                         parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
@@ -260,6 +262,8 @@ class GeminiProvider extends BaseProvider {
 
                             if (partType === 'text') {
                                 yield { text: currentPart.data.text, done: isFinished };
+                            } else if (partType === 'thought') {
+                                yield { thought: currentPart.data.thought, done: isFinished };
                             } else if (partType === 'image') {
                                 yield { inlineData: currentPart.data.inlineData, done: isFinished };
                             } else {

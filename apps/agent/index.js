@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
-const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview","gemma-4-31b-it"];
+const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview","gemma-4-31b-it","gemma-4-26b-a4b-it"];
 
 const provider = new GeminiProvider({ apiKeys, models });
 
@@ -189,7 +189,8 @@ const DEBOUNCE_DELAY = 5000; // 5 seconds
 let isProcessing = false;
 
 const processEvents = async () => {
-    if (pendingEvents.length === 0 || isProcessing) return;
+    if (pendingEvents.length === 0) return;
+    // if (isProcessing) return;
     
     isProcessing = true;
     const eventsToProcess = [...pendingEvents];
@@ -301,6 +302,8 @@ ${memoryContext}`;
         for await (const chunkGenerator of stream) {
             for await (const part of chunkGenerator) {
                 if (part.done) {
+                    // print out the part
+                    console.log('🤖 LLM Output:', part);
                     // Check if text contains JSON-formatted function call
                     let functionCallToExecute = part.functionCall;
                     
