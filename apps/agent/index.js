@@ -342,7 +342,8 @@ ${memoryContext}`;
                         const fullName = functionCallToExecute.name;
                         console.log(`🤖 Function call detected: ${fullName}`);
                         const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
-                        const args = functionCallToExecute.args;
+                        // Ensure args is always an object
+                        const args = functionCallToExecute.args || {};
                         
                         console.log(`🤖 AI calling ${targetApp} -> ${toolName} with`, args);
 
