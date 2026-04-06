@@ -86,28 +86,25 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 
 | App | Description |
 | :--- | :--- |
-| **Agent** 🤖 | The brain. Processes events, determines tool calls, and orchestrates **Recursive Sub-Agents**. |
-| **Device** 💻 | Local/Remote terminal & filesystem bridge. Supports **Native Bash Reverse Shells** and human-readable keyboard shortcuts. |
+| **Agent** 🤖 | The brain. Processes incoming events and determines the best course of action using tool-calling. |
 | **Discord** 💬 | A bridge between Discord channels/DMs and the Agent. Broadcasts messages as events. |
-| **University** 🏛️ | Scraper for the UAJY student portal. Supports login, courses, and tasks. |
-| **Internet** 🌐 | Provides web search and content retrieval capabilities. |
-| **Tools** 🔧 | The system registry where all available tool definitions are indexed using RAG. |
-| **Console** 🎛️ | A web-based GUI to monitor active services, trigger tools, and chat. |
+| **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
+| **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
+| **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
+| **Console** 🎛️ | A web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. |
+| **Template** 📂 | A boilerplate for quickly spinning up new PulseFlake micro-apps. |
 
 ---
 
-## 🎯 Special Features
+## 🎯 Generic Use Case: Multi-Agent Orchestration
 
-### **Recursive Multi-Agent Orchestration**
-PulseFlake supports **Recursive Multi-Agent Orchestration**. The main Agent can spawn **Sub-Agents** to handle complex, isolated sub-tasks.
-- **Goal-Oriented**: Each sub-agent is initialized with a specific goal.
-- **Reporting**: Uses `agent.done({ message: "..." })` to terminate and report results to its parent.
+PulseFlake supports **Recursive Multi-Agent Orchestration**. The main Agent can spawn **Sub-Agents** to handle complex, long-running, or isolated sub-tasks.
 
-### **Native Device Interaction**
-The **Device** app allows the agent to control remote machines with zero dependencies via a native bash reverse shell.
-- **Installation**: `bash <(curl -sL sesh.top:7777/workspace-name)`
-- **Human Shortcuts**: Supports `Ctrl+C`, `Up`, `Down`, `Enter`, etc., in `sendCommand`.
-- **Hybrid Support**: Works with both high-fidelity PTY (WebSocket) and lightweight native shells (TCP).
+### **Sub-Agent Workflow**
+1.  **Spawn**: The Main Agent calls `agent.spawnSubagent({ goal: "Task description" })`.
+2.  **Isolation**: The Sub-Agent receives the goal and its own tool-calling loop. It does **not** hear global system events, ensuring focus.
+3.  **Recursive**: Sub-Agents can spawn their own nested Sub-Agents if a task needs further decomposition.
+4.  **Reporting**: Once finished, the Sub-Agent uses the `agent.done({ message: "Result" })` tool to report back to its parent and terminate.
 
 ---
 
