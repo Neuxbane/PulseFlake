@@ -326,7 +326,7 @@ ${memoryContext}`;
                             message: `LLM output was not a function call: ${part.text}. Please use function calling.`
                         });
                         if (debounceTimer) clearTimeout(debounceTimer);
-                        processEvents();
+                        debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
                     }
 
                     if (functionCallToExecute) {
@@ -393,7 +393,7 @@ ${memoryContext}`;
                                 result: toolRes
                             });
                             if (debounceTimer) clearTimeout(debounceTimer);
-                            processEvents();
+                            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
                         } catch (err) {
                             console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
                             pendingEvents.push({
@@ -402,7 +402,7 @@ ${memoryContext}`;
                                 message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
                             });
                             if (debounceTimer) clearTimeout(debounceTimer);
-                            processEvents();
+                            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
                         }
                     }
                 }
