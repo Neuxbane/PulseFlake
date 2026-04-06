@@ -18,31 +18,31 @@ module.exports = {
         },
         listSessions: (bus) => {
             const sessions = shellSessionManager.listSessions();
-            return { ack: 'sessions listed', sessions };
+            return sessions;
         },
         listDir: async (bus, data) => {
             const result = await shellSessionManager.listDir(data.workspaceName, data && data.path ? data.path : "./");
-            return { ack: 'dir listed', result };
+            return result ;
         },
         createFile: async (bus, data) => {
             const result = await shellSessionManager.createFile(data.workspaceName, data.path, data.content);
-            return { ack: 'file created', result };
+            return result;
         },
         deleteFile: async (bus, data) => {
             const result = await shellSessionManager.deleteFile(data.workspaceName, data.path);
-            return { ack: 'file deleted', result };
+            return result;
         },
         updateFile: async (bus, data) => {
             const result = await shellSessionManager.updateFile(data.workspaceName, data.path, data.content);
-            return { ack: 'file updated', result };
+            return result;
         },
         readFile: async (bus, data) => {
             const result = await shellSessionManager.readFile(data.workspaceName, data.path, data.lineFrom, data.lineTo);
-            return { ack: 'file read', result };
+            return result;
         },
         applyPatch: async (bus, data) => {
             const result = await shellSessionManager.applyPatch(data.workspaceName, data.path, data.patch);
-            return { ack: 'patch applied', result };
+            return result;
         },
     },
     schema: {

@@ -54,6 +54,16 @@ const saveHistory = () => {
     fs.writeFileSync(historyPath, JSON.stringify(chatHistory, null, 2));
 };
 
+const loadHistory = () => {
+    if (fs.existsSync(historyPath)) {
+        try {
+            chatHistory = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+        } catch (e) {
+            console.error('Failed to load history:', e);
+        }
+    }
+}
+
 class SubAgent {
     constructor(id, parentId, instruction, goal, toolsForAI, parentResolve) {
         this.id = id;
@@ -163,8 +173,27 @@ async function handleSpawnSubagent(args, parentId = 'main') {
     
     // Pass along the same tools availability for now, ideally search again or pass filtered
     const defaultTools = await server.request('tools', 'built-in');
-    const searchResults = await server.request('tools', 'search', args.goal);
-    const toolsForAI = [...searchResults.slice(0, 10).map(r => ({
+    
+    // 1. RAG search for relevant tools
+    const ragSearchResults = await server.request('tools', 'search', args.goal);
+    console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools for sub-agent ${id}`);
+    
+    // 2. Contain rules search for relevant tools
+    const rulesSearchResults = await server.request('tools', 'search-rules', args.goal);
+    console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools for sub-agent ${id}`);
+    
+    // Combine both results, deduplicate by tool name
+    const seenTools = new Set();
+    const combinedResults = [];
+    
+    [...ragSearchResults, ...rulesSearchResults].forEach(r => {
+        if (!seenTools.has(r.fullName)) {
+            seenTools.add(r.fullName);
+            combinedResults.push(r);
+        }
+    });
+    
+    const toolsForAI = [...combinedResults.slice(0, 10).map(r => ({
         name: `${r.identifier}.${r.name}`,
         description: r.definition.description,
         parameters: r.definition.parameters
@@ -190,34 +219,72 @@ let isProcessing = false;
 
 const processEvents = async () => {
     if (pendingEvents.length === 0) return;
-    // if (isProcessing) return;
     
-    isProcessing = true;
+    // if (isProcessing) return;
+    loadHistory();
+    // isProcessing = true;
     const eventsToProcess = [...pendingEvents];
     pendingEvents = [];
-    
+    let toolCalls = [];
+    let toolResults = [];
     console.log(`🤖 Processing batch of ${eventsToProcess.length} events...`);
 
     try {
-        const combinedContent = eventsToProcess.map(e => JSON.stringify(e)).join('\n');
+        // Build combined content with support for attachments
+        const combinedContent = [];
+        
+        for (const event of eventsToProcess) {
+            // Separate attachments from the event data
+            const eventCopy = typeof event === 'string' ? event : { ...event };
+            let attachments = [];
+            
+            if (typeof eventCopy === 'object' && eventCopy?.data?.attachments) {
+                attachments = eventCopy.data?.attachments;
+                delete eventCopy.data?.attachments;
+            }
+            
+            // Add the event as text
+            combinedContent.push({ 
+                text: typeof eventCopy === 'string' ? eventCopy : JSON.stringify(eventCopy) 
+            });
+            
+            // Add each attachment as a separate part
+            for (const attachmentPath of attachments) {
+                combinedContent.push({ attachment: attachmentPath });
+            }
+        }
 
         const defaultTools = await server.request('tools', 'built-in');
         
         // 1. RAG search for relevant tools
-        const searchResults = await server.request('tools', 'search', combinedContent);
+        const ragSearchResults = await server.request('tools', 'search', combinedContent);
+        console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools`);
         
-        console.log(`🔍 RAG found ${searchResults.length} potential tools`);
+        // 2. Contain rules search for relevant tools
+        const rulesSearchResults = await server.request('tools', 'search-rules', combinedContent);
+        console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools`);
         
-        const toolsForAI = [...searchResults.slice(0, 10).map(r => ({
+        // Combine both results, prioritizing RAG then Rules, deduplicate by tool name
+        const seenTools = new Set();
+        const combinedResults = [];
+        
+        [...ragSearchResults, ...rulesSearchResults].forEach(r => {
+            if (!seenTools.has(r.fullName)) {
+                seenTools.add(r.fullName);
+                combinedResults.push(r);
+            }
+        });
+        
+        const toolsForAI = [...combinedResults.slice(0, 10).map(r => ({
             name: `${r.identifier}.${r.name}`,
             description: r.definition.description,
             parameters: r.definition.parameters
         })), ...defaultTools];
 
         // 2. Update chat history
-        chatHistory.push({ role: 'user', parts: [{ text: `INCOMING_EVENT: ${JSON.stringify(combinedContent)}` }] });
-        
-        let messages = chatHistory.slice(-100);
+        chatHistory.push({ role: 'user', parts: combinedContent });
+
+        let messages = chatHistory.slice(-50);
 
         // Fetch memories and inject into context (as pseudo-history/system setup)
         const currentMemories = getMemories();
@@ -226,8 +293,8 @@ const processEvents = async () => {
             : "No memories stored.";
 
         // Ensure the very old messages start with user
-        if (messages.length > 0 && messages[0].role !== 'user') {
-            messages.unshift({ role: 'user', parts: [{ text: "System Initialized. You are in Event-Driven System Architecture. We only accept using Function Calling" }] });
+        if (messages[0].role === 'user') {
+            messages = messages.slice(1);
         }
 
         let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
@@ -330,8 +397,6 @@ ${memoryContext}`;
                     }
 
                     if (functionCallToExecute) {
-                        chatHistory.push({ role: 'model', parts: [{ text: JSON.stringify(functionCallToExecute) }] });
-                        saveHistory();
 
                         const fullName = functionCallToExecute.name;
                         console.log(`🤖 Function call detected: ${fullName}`);
@@ -385,15 +450,9 @@ ${memoryContext}`;
                             
                             console.log(`🤖 Tool [${fullName}] response:`, toolRes);
 
-                            console.log(`🤖 Tool result received for ${fullName}. Triggering immediate event loop...`);
-                            pendingEvents.push({
-                                eventName: 'tool_result',
-                                from: targetApp,
-                                tool: fullName,
-                                result: toolRes
-                            });
-                            if (debounceTimer) clearTimeout(debounceTimer);
-                            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
+                            toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
+                            toolResults.push({ text: JSON.stringify({ name: fullName, output: toolRes }) });
+
                         } catch (err) {
                             console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
                             pendingEvents.push({
@@ -411,7 +470,11 @@ ${memoryContext}`;
     } catch (err) {
         console.error('🤖 Batch Process Error:', err);
     } finally {
-        isProcessing = false;
+        chatHistory.push({ role: 'model', parts: toolCalls });
+        pendingEvents.push(...toolResults);
+        saveHistory();
+        
+        // isProcessing = false;
         // Check if new events arrived during processing
         if (pendingEvents.length > 0) {
             if (debounceTimer) clearTimeout(debounceTimer);

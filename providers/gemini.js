@@ -14,7 +14,7 @@ class GeminiProvider extends BaseProvider {
         this.currentApiKeyIndex = 0;
         this.currentModelIndex = 0;
         this.lastCallTime = 0;
-        this.minWaitMs = config.minWaitMs || 5000; // Default 3 seconds
+        this.minWaitMs = config.minWaitMs || 1000; // Default 3 seconds
     }
 
     async _waitForRateLimit() {
@@ -79,6 +79,52 @@ class GeminiProvider extends BaseProvider {
                     parts: c.parts.map(p => {
                         if (typeof p === 'string') return { text: p };
                         if (p.text) return { text: p.text };
+                        if (p.attachment) {
+                            // Handle attachment: convert file path to inlineData
+                            try {
+                                const fs = require('fs');
+                                const path = require('path');
+                                
+                                if (!fs.existsSync(p.attachment)) {
+                                    console.warn(`[GeminiProvider] ⚠️  Attachment not found: ${p.attachment}`);
+                                    return { text: `[Attachment not found: ${p.attachment}]` };
+                                }
+                                
+                                // Read file and convert to base64
+                                const fileBuffer = fs.readFileSync(p.attachment);
+                                const base64Data = fileBuffer.toString('base64');
+                                
+                                // Determine MIME type from file extension
+                                const ext = path.extname(p.attachment).toLowerCase();
+                                const mimeTypeMap = {
+                                    '.jpg': 'image/jpeg',
+                                    '.jpeg': 'image/jpeg',
+                                    '.png': 'image/png',
+                                    '.gif': 'image/gif',
+                                    '.webp': 'image/webp',
+                                    '.mp4': 'video/mp4',
+                                    '.mov': 'video/quicktime',
+                                    '.avi': 'video/x-msvideo',
+                                    '.pdf': 'application/pdf',
+                                    '.txt': 'text/plain',
+                                    '.json': 'application/json'
+                                };
+                                
+                                const mimeType = mimeTypeMap[ext] || 'application/octet-stream';
+                                
+                                console.log(`[GeminiProvider] 📎 Loading attachment: ${p.attachment} (${mimeType})`);
+                                
+                                return {
+                                    inlineData: {
+                                        mimeType,
+                                        data: base64Data
+                                    }
+                                };
+                            } catch (err) {
+                                console.error(`[GeminiProvider] ❌ Error processing attachment ${p.attachment}:`, err.message);
+                                return { text: `[Error loading attachment: ${err.message}]` };
+                            }
+                        }
                         if (p.inlineData) return { inlineData: p.inlineData };
                         if (p.functionCall) {
                             // Ensure args are a plain object, not stringified JSON
@@ -135,7 +181,7 @@ class GeminiProvider extends BaseProvider {
 
                         for await (const chunk of response) {
                             // print chunck
-                            console.log(`[GeminiProvider] Received chunk:`, JSON.stringify(chunk.candidates?.[0]?.content));
+                            console.log(`[GeminiProvider] Received chunk:`, JSON.stringify(chunk));
                             if (signal?.aborted) break;
 
                             const parts = [];
@@ -150,7 +196,51 @@ class GeminiProvider extends BaseProvider {
                                     if (part.thought) {
                                         parts.push({ type: 'thought', data: { thought: part.text }, done: isStreamEnding });
                                     } else if (part.text) {
-                                        parts.push({ type: 'text', data: { text: part.text }, done: isStreamEnding });
+                                        // Try to parse JSON function calls from text
+                                        // Handle case where multiple JSON objects are concatenated
+                                        const text = part.text;
+                                        const jsonMatches = [];
+                                        let braceCount = 0;
+                                        let currentStart = -1;
+
+                                        for (let i = 0; i < text.length; i++) {
+                                            if (text[i] === '{') {
+                                                if (braceCount === 0) currentStart = i;
+                                                braceCount++;
+                                            } else if (text[i] === '}') {
+                                                braceCount--;
+                                                if (braceCount === 0 && currentStart !== -1) {
+                                                    jsonMatches.push(text.substring(currentStart, i + 1));
+                                                    currentStart = -1;
+                                                }
+                                            }
+                                        }
+
+                                        // If we found JSON objects, try to parse them as function calls
+                                        if (jsonMatches.length > 0) {
+                                            for (const jsonStr of jsonMatches) {
+                                                try {
+                                                    const parsed = JSON.parse(jsonStr);
+                                                    if (parsed.name && parsed.args) {
+                                                        // This is a function call
+                                                        parts.push({ 
+                                                            type: 'functionCall', 
+                                                            data: { functionCall: { name: parsed.name, args: parsed.args } }, 
+                                                            done: isStreamEnding 
+                                                        });
+                                                    } else {
+                                                        // Just regular JSON text
+                                                        parts.push({ type: 'text', data: { text: jsonStr }, done: isStreamEnding });
+                                                    }
+                                                } catch (e) {
+                                                    // Not valid JSON, treat as text
+                                                    parts.push({ type: 'text', data: { text: jsonStr }, done: isStreamEnding });
+                                                }
+                                            }
+                                        } else {
+                                            // No JSON found, just regular text
+                                            parts.push({ type: 'text', data: { text: text }, done: isStreamEnding });
+                                        }
                                     } else if (part.inlineData) {
                                         parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
                                     } else if (part.functionCall) {
@@ -223,6 +313,8 @@ class GeminiProvider extends BaseProvider {
                                 await new Promise(r => resolveNext = r);
                             }
 
+                            console.log
+
                             // If different type next, exit this generator
                             if (currentQueue.length > 0 && currentQueue[0].type !== partType) {
                                 break;
@@ -260,20 +352,10 @@ class GeminiProvider extends BaseProvider {
                             // If it's a functionCall, we never want to merge it with the next one in the same generator
                             const isFinished = (partType === 'functionCall') || (!hasMoreOfSameType && streamEnded);
 
-                            if (partType === 'text') {
-                                yield { text: currentPart.data.text, done: isFinished };
-                            } else if (partType === 'thought') {
-                                yield { thought: currentPart.data.thought, done: isFinished };
-                            } else if (partType === 'image') {
-                                yield { inlineData: currentPart.data.inlineData, done: isFinished };
-                            } else {
-                                yield { functionCall: currentPart.data.functionCall, done: isFinished };
-                            }
-
-                            if (isFinished) {
-                                yield { result: accumulated, done: true };
+                            if(isFinished) {
+                                yield { ...accumulated, done: true };
                                 break;
-                            }
+                            } else yield { ...currentPart.data, done: false };
                         }
                         
                         return accumulated;

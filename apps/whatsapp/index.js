@@ -235,16 +235,27 @@ client.on('message', async (message) => {
             try {
                 const media = await message.downloadMedia();
                 if (media) {
-                    const resource = {
-                        base64: media.data,
-                        mimeType: media.mimetype,
-                        filename: media.filename || 'whatsapp_media'
-                    };
-                    if (media.mimetype.startsWith('image/')) {
-                        eventData.images = [resource];
-                    } else {
-                        eventData.documents = [resource];
+                    // Create a media directory if it doesn't exist
+                    const mediaDir = path.join(__dirname, 'media');
+                    if (!fs.existsSync(mediaDir)) {
+                        fs.mkdirSync(mediaDir, { recursive: true });
                     }
+
+                    // Generate filename with timestamp
+                    const ext = media.mimetype.split('/')[1] || 'bin';
+                    const timestamp = Date.now();
+                    const filename = `${timestamp}.${ext}`;
+                    const filepath = path.join(mediaDir, filename);
+
+                    // Save the file locally
+                    const buffer = Buffer.from(media.data, 'base64');
+                    fs.writeFileSync(filepath, buffer);
+
+                    // Add attachment with absolute path
+                    if (!eventData.attachments) {
+                        eventData.attachments = [];
+                    }
+                    eventData.attachments.push(filepath);
                 }
             } catch (mediaError) {
                 console.error(`[whatsapp] Failed to download media:`, mediaError);

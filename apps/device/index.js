@@ -16,21 +16,21 @@ for (const [method, handler] of Object.entries(deviceApp.listeners)) {
 
 const toolsSocketPath = require('path').resolve(__dirname, '../tools/tools.sock');
 
-server.connect(toolsSocketPath).then(() => {
+server.connect(toolsSocketPath).then(async() => {
     console.log('[device] Connected to tools server.');
-    
-    // Register schemas in the registry
-    for (const [name, definition] of Object.entries(deviceApp.schema)) {
-        server.request('tools', 'register', {
-            name,
-            definition,
-            identifier: 'device'
-        }).then(res => {
-            console.log(`[device] Registered tool: ${name}`, res);
-        }).catch(err => {
-            console.error(`[device] Failed to register tool: ${name}`, err.message);
-        });
-    }
+    await server.request('tools', 'register', Object.entries(deviceApp.schema).map(([method, definition]) => ({
+        parameters: {
+            type: definition.type,
+            properties: definition.properties,
+            required: definition.required
+        },
+        description: definition.description,
+        name: method
+    }))).then(() => {
+        console.log('[device] Registered tools with tools server.');
+    }).catch(err => {
+        console.error('[device] Failed to register tools:', err);
+    });
 });
 
 server.start().then(() => {

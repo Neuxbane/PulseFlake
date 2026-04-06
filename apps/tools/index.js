@@ -61,12 +61,63 @@ server.listen('*', 'search', async(req, res) => {
                 identifier, 
                 name, 
                 similarity,
-                definition
+                definition,
+                searchMethod: 'rag'
             };
         }).sort((a, b) => b.similarity - a.similarity).slice(0, 10);
         res.send(results);
     } catch (err) {
-        console.error(`[tools] Search error:`, err.message);
+        console.error(`[tools] Search (RAG) error:`, err.message);
+        res.send([]);
+    }
+});
+
+// Contain rules based search - keyword matching
+server.listen('*', 'search-rules', async(req, res) => {
+    try {
+        const query = typeof req.data === 'string' ? req.data : JSON.stringify(req.data);
+        // Extract keywords (split by space, remove special chars, lowercase)
+        const keywords = query.toLowerCase()
+            .split(/\s+/)
+            .filter(k => k.length > 2)
+            .map(k => k.replace(/[^a-z0-9]/g, ''));
+
+        const results = [];
+        
+        for (const [identifier, toolList] of Object.entries(tools)) {
+            for (const definition of toolList) {
+                const fullToolName = `${identifier}.${definition.name}`;
+                
+                // Build searchable text from tool definition
+                const searchText = `${definition.name} ${definition.description} ${JSON.stringify(definition.parameters)}`.toLowerCase();
+                
+                // Count how many keywords match
+                let matchCount = 0;
+                for (const keyword of keywords) {
+                    if (searchText.includes(keyword)) {
+                        matchCount++;
+                    }
+                }
+                
+                // Only include tools that have at least one keyword match
+                if (matchCount > 0) {
+                    results.push({
+                        fullName: fullToolName,
+                        identifier,
+                        name: definition.name,
+                        matchCount,
+                        definition,
+                        searchMethod: 'rules'
+                    });
+                }
+            }
+        }
+        
+        // Sort by match count (descending) and limit to 10
+        results.sort((a, b) => b.matchCount - a.matchCount);
+        res.send(results.slice(0, 10));
+    } catch (err) {
+        console.error(`[tools] Search (rules) error:`, err.message);
         res.send([]);
     }
 });
@@ -129,11 +180,22 @@ server.start().then(() => {
         },
         {
             name: 'search',
-            description: 'Search for tools relevant to a query',
+            description: 'Search for tools relevant to a query using RAG/embedding similarity',
             parameters: {
                 type: 'object',
                 properties: {
                     query: { type: 'string', description: 'Search query' }
+                },
+                required: ['query']
+            }
+        },
+        {
+            name: 'search-rules',
+            description: 'Search for tools relevant to a query using keyword contain rules matching',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query with keywords' }
                 },
                 required: ['query']
             }

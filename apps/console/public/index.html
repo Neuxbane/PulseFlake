@@ -6,6 +6,7 @@
     <title>PulseFlake💕 | Console</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 </head>
 <body class="bg-gray-900 text-white font-sans">
 
@@ -20,6 +21,10 @@
 
             <button onclick="showPage('services')" id="nav-services" class="p-3 rounded-xl transition-all duration-300 text-gray-500 hover:bg-gray-800 hover:text-gray-300" title="Services & Tools">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+            </button>
+
+            <button onclick="showPage('calendar')" id="nav-calendar" class="p-3 rounded-xl transition-all duration-300 text-gray-500 hover:bg-gray-800 hover:text-gray-300" title="Calendar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </button>
 
             <div class="mt-auto p-3 text-gray-700 hover:text-red-500 cursor-pointer transition-colors" onclick="location.reload()" title="Reload">
@@ -56,6 +61,104 @@
                 <p class="text-[10px] text-center text-gray-600 mt-2 uppercase tracking-tighter">Event-Driven Architecture | Basic Auth Secured</p>
             </div>
         </main>
+
+        <!-- PAGE: CALENDAR (Google Calendar Style) -->
+        <main id="page-calendar" class="hidden flex-1 flex flex-col bg-gray-950 overflow-hidden">
+            <header class="h-14 border-b border-gray-900 flex items-center justify-between px-6 bg-gray-900/20 backdrop-blur-md">
+                <div class="flex items-center gap-3">
+                    <span class="text-xs font-black tracking-widest text-pink-500 uppercase">System Scheduling</span>
+                    <span class="text-[10px] text-gray-600 font-mono">CALENDAR_VIEW</span>
+                    <span class="text-[10px] text-gray-500 font-mono" id="tz-display"></span>
+                </div>
+                <div class="flex items-center gap-2" id="calendar-actions">
+                    <button onclick="openCreateModal()" class="px-3 py-1 bg-pink-600 hover:bg-pink-500 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 shadow-lg">CREATE EVENT</button>
+                    <button onclick="onCalendarPageOpened()" class="p-1 px-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg transition-all" title="Refresh">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    </button>
+                </div>
+            </header>
+            <div class="flex-1 overflow-hidden p-6">
+                <div id="calendar" class="h-full text-sm"></div>
+            </div>
+        </main>
+
+        <!-- MODAL: Create Event -->
+        <div id="modal-event" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div class="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                <div class="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-950/50">
+                    <h3 class="text-sm font-black tracking-widest text-white uppercase">Schedule New Item</h3>
+                    <button onclick="closeEventModal()" class="text-gray-500 hover:text-white transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                    <div class="space-y-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500">Event Title*</label>
+                        <input type="text" id="event-title" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] uppercase font-bold text-gray-500">Start Time</label>
+                            <input type="datetime-local" id="event-start" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] uppercase font-bold text-gray-500">Duration (mins)</label>
+                            <input type="number" id="event-duration" placeholder="60" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 text-[10px] uppercase font-bold text-gray-500 cursor-pointer">
+                            <input type="checkbox" id="event-all-day" class="w-4 h-4 rounded" onchange="toggleAllDayUI()">
+                            All Day Event
+                        </label>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500">Recurrence</label>
+                        <div class="flex flex-col gap-2">
+                            <select id="event-repeat-preset" onchange="updateRepeatFunction(this.value)" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all text-gray-400">
+                                <option value="">No Repeat</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="workdays">Workdays (Mon-Fri)</option>
+                                <option value="weekend">Weekend (Sat-Sun)</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                                <option value="custom">-- Custom Function --</option>
+                            </select>
+                            <input type="text" id="event-repeat" placeholder="(curr, evnt) => curr.day == evnt.day" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all font-mono text-pink-400">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500">Description (Markdown)</label>
+                        <textarea id="event-desc" rows="4" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all resize-none"></textarea>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500">Tags (comma separated)</label>
+                        <input type="text" id="event-tags" placeholder="work, critical, personal" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-2 text-[10px] uppercase font-bold text-gray-500 cursor-pointer">
+                            <input type="checkbox" id="event-parallelable" checked class="w-4 h-4 rounded">
+                            Parallelable
+                        </label>
+                        <label class="flex items-center gap-2 text-[10px] uppercase font-bold text-gray-500 cursor-pointer">
+                            <input type="checkbox" id="event-important" checked class="w-4 h-4 rounded">
+                            Important
+                        </label>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500">Reminders (minutes before, comma separated)</label>
+                        <input type="text" id="event-reminds" placeholder="1, 60, 1440" class="w-full bg-black border border-gray-800 rounded-xl px-4 py-2 text-sm focus:border-pink-600 outline-none transition-all">
+                    </div>
+                </div>
+                <div class="p-6 bg-gray-950/50 flex gap-3">
+                    <button onclick="deleteCurrentEvent()" id="btn-delete-event" class="hidden px-4 py-2 bg-red-900/20 hover:bg-red-900/40 text-red-500 text-xs font-bold rounded-xl transition-all border border-red-900/50">DELETE</button>
+                    <div class="flex-1"></div>
+                    <button onclick="closeEventModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold rounded-xl transition-all">CANCEL</button>
+                    <button onclick="commitEvent()" id="btn-save-event" class="px-8 py-2 bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold rounded-xl transition-all active:scale-95 shadow-lg">SAVE EVENT</button>
+                </div>
+            </div>
+        </div>
 
         <!-- PAGE: SERVICES (Services & Tools) -->
         <main id="page-services" class="hidden flex-1 flex text-gray-300 bg-gray-950 overflow-hidden">

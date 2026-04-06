@@ -1,9 +1,33 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
 const server = new (require('#UnixSocket'))("discord");
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+
+// --- ATTACHMENT DOWNLOAD UTILITY ---
+const downloadAttachment = (url, filepath) => {
+    return new Promise((resolve, reject) => {
+        https.get(url, (response) => {
+            if (response.statusCode !== 200) {
+                reject(new Error(`Failed to download: ${response.statusCode}`));
+                return;
+            }
+            const fileStream = fs.createWriteStream(filepath);
+            response.pipe(fileStream);
+            fileStream.on('finish', () => {
+                fileStream.close();
+                resolve(filepath);
+            });
+            fileStream.on('error', (err) => {
+                fs.unlink(filepath, () => {}); // Delete the file if error
+                reject(err);
+            });
+        }).on('error', reject);
+    });
+};
 
 const client = new Client({ 
     intents: [
@@ -96,12 +120,37 @@ client.on('messageCreate', async (message) => {
         timestamp: getTimeInJakarta()
     };
 
+    // Download attachments if any
     if (message.attachments.size > 0) {
-        eventData.attachments = message.attachments.map(att => ({
-            url: att.url,
-            contentType: att.contentType,
-            name: att.name
-        }));
+        try {
+            const mediaDir = path.join(__dirname, 'media');
+            if (!fs.existsSync(mediaDir)) {
+                fs.mkdirSync(mediaDir, { recursive: true });
+            }
+
+            const attachments = [];
+            for (const att of message.attachments.values()) {
+                try {
+                    // Generate filename with timestamp
+                    const ext = path.extname(att.name) || path.extname(att.url).split('?')[0];
+                    const timestamp = Date.now();
+                    const filename = `${timestamp}-${att.id}${ext}`;
+                    const filepath = path.join(mediaDir, filename);
+
+                    // Download the attachment
+                    await downloadAttachment(att.url, filepath);
+                    attachments.push(filepath);
+                    console.log(`[discord] Downloaded attachment: ${filepath}`);
+                } catch (err) {
+                    console.error(`[discord] Failed to download attachment ${att.name}:`, err.message);
+                }
+            }
+            if (attachments.length > 0) {
+                eventData.attachments = attachments;
+            }
+        } catch (err) {
+            console.error(`[discord] Error processing attachments:`, err.message);
+        }
     }
     
     // Broadcast generic event to anyone subscribed

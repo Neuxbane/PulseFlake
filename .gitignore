@@ -28,9 +28,11 @@ archived/
 .wwebjs_auth/
 .wwebjs_cache/
 
+apps/discord/media/
 apps/console/console-history.json
 apps/agent/memory.jsonl
 apps/imagen/public/
 *copy.json
 apps/whatsapp/config.json
 .gitignore
+apps/calendar/calendar.json

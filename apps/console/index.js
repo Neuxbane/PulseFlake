@@ -45,6 +45,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- 2. IPC HUB ---
 const activeApps = new Set();
 let registeredTools = [];
+let groupedTools = {};
 
 const fs = require('fs');
 const cheerio = require('cheerio');
@@ -101,20 +102,21 @@ async function refreshTools() {
         const dump = await server.request('tools', 'dump', {});
         if (dump && Array.isArray(dump)) {
             // Group tools by identifier for the UI
-            const grouped = {};
+            const currentGrouped = {};
             dump.forEach(tool => {
                 const id = tool.identifier;
-                if (!grouped[id]) {
-                    grouped[id] = [];
+                if (!currentGrouped[id]) {
+                    currentGrouped[id] = [];
                     activeApps.add(id);
                 }
-                grouped[id].push({
+                currentGrouped[id].push({
                     ...tool.definition,
                     fullName: tool.fullName
                 });
             });
             
-            io.emit('tools_dump', grouped);
+            groupedTools = currentGrouped;
+            io.emit('tools_dump', groupedTools);
             io.emit('services_update', Array.from(activeApps));
         }
     } catch (e) {
@@ -134,6 +136,63 @@ autoConnect();
 
 // Periodic refresh
 setInterval(refreshTools, 30000);
+
+// --- 3. API ENDPOINTS ---
+app.get('/api/services', (req, res) => {
+    res.json(Array.from(activeApps));
+});
+
+app.get('/api/tools', async (req, res) => {
+    await refreshTools();
+    res.json(groupedTools);
+});
+
+app.get('/api/history', (req, res) => {
+    res.json(consoleHistory);
+});
+
+app.get('/api/calendar/events', async (req, res) => {
+    try {
+        const calendarSocket = path.resolve(__dirname, '../calendar/calendar.sock');
+        if (fs.existsSync(calendarSocket)) {
+            await server.connect(calendarSocket);
+            const items = await server.request('calendar', 'listEvents');
+            res.json(items);
+        } else {
+            res.json([]);
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/execute', async (req, res) => {
+    const { socketPath, toolName, arguments: args } = req.body;
+    try {
+        if (fs.existsSync(socketPath)) {
+            await server.connect(socketPath);
+        }
+        const result = await server.request(socketPath, toolName, args);
+        
+        // Push update if calendar was changed
+        if (socketPath.includes('calendar')) {
+            const items = await server.request('calendar', 'listEvents');
+            io.emit('calendar_events', items);
+        }
+        
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/chat', (req, res) => {
+    const data = req.body;
+    consoleHistory.push({ role: 'user', content: data.prompt, timestamp: new Date() });
+    saveConsoleHistory();
+    server.broadcast('event', data);
+    res.json({ status: 'sent' });
+});
 
 // Metadata fetching
 app.get('/api/metadata', async (req, res) => {
@@ -226,6 +285,62 @@ io.on('connection', (socket) => {
         refreshTools();
     });
 
+    socket.on('get_calendar_events', async () => {
+        try {
+            const calendarSocket = path.resolve(__dirname, '../calendar/calendar.sock');
+            if (fs.existsSync(calendarSocket)) {
+                await server.connect(calendarSocket);
+                const items = await server.request('calendar', 'listEvents');
+                socket.emit('calendar_events', items);
+            } else {
+                socket.emit('calendar_events', []);
+            }
+        } catch (e) {
+            console.error('[console] Error fetching events:', e.message);
+            socket.emit('calendar_events', []);
+        }
+    });
+
+    socket.on('get_timeline_events', async () => {
+        try {
+            const calendarSocket = path.resolve(__dirname, '../calendar/calendar.sock');
+            if (fs.existsSync(calendarSocket)) {
+                await server.connect(calendarSocket);
+                const items = await server.request('calendar', 'timeline', { limit: 100 });
+                socket.emit('timeline_events', items);
+            } else {
+                socket.emit('timeline_events', []);
+            }
+        } catch (e) {
+            console.error('[console] Error fetching timeline:', e.message);
+            socket.emit('timeline_events', []);
+        }
+    });
+
+    socket.on('execute_tool', async ({ socketPath, toolName, arguments: args }, callback) => {
+        try {
+            console.log(`[console] GUI executing ${toolName} on ${socketPath}...`);
+            
+            // Ensure we are connected to the socket before requesting
+            if (fs.existsSync(socketPath)) {
+                await server.connect(socketPath);
+            }
+            
+            const res = await server.request(socketPath, toolName, args);
+            
+            // If calendar was updated, re-fetch for everyone
+            if (socketPath.includes('calendar')) {
+                const items = await server.request('calendar', 'listEvents');
+                io.emit('calendar_events', items);
+            }
+            
+            if (callback) callback(res);
+        } catch (err) {
+            console.error(`[console] Execution error:`, err.message);
+            if (callback) callback({ error: err.message });
+        }
+    });
+
     socket.on('agent_chat', (data) => {
         // Record user message
         consoleHistory.push({ role: 'user', content: data.prompt, timestamp: new Date() });
@@ -233,17 +348,6 @@ io.on('connection', (socket) => {
         
         // Forward web chat to Agent as a 'prompt' event
         server.broadcast('event', data);
-    });
-
-    socket.on('execute_tool', async ({ socketPath, toolName, arguments: args }, callback) => {
-        try {
-            console.log(`[console] GUI executing ${toolName} on ${socketPath}...`);
-            const res = await server.request(socketPath, toolName, args);
-            if (callback) callback(res);
-        } catch (err) {
-            console.error(`[console] Execution error:`, err.message);
-            if (callback) callback({ error: err.message });
-        }
     });
 });
 
