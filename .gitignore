@@ -36,3 +36,4 @@ apps/imagen/public/
 apps/whatsapp/config.json
 .gitignore
 apps/calendar/calendar.json
+apps/whatsapp/media/

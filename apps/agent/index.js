@@ -50,7 +50,25 @@ if (chatHistory.length === 0) {
     );
 }
 
+const invalidateChats = (chats)=> {
+    let role, correctedHistory = [];
+    for (let chat of chats) {
+        if(chat.role !== role) {
+            role = chat.role;
+            correctedHistory.push(chat);
+        }
+    }
+    return correctedHistory;
+}
+
+const invalidateHistory = () => {
+    chatHistory = invalidateChats(chatHistory);
+};
+
+invalidateHistory();
+
 const saveHistory = () => {
+    invalidateHistory();
     fs.writeFileSync(historyPath, JSON.stringify(chatHistory, null, 2));
 };
 
@@ -221,7 +239,7 @@ const processEvents = async () => {
     if (pendingEvents.length === 0) return;
     
     // if (isProcessing) return;
-    loadHistory();
+    invalidateHistory();
     // isProcessing = true;
     const eventsToProcess = [...pendingEvents];
     pendingEvents = [];
@@ -281,10 +299,18 @@ const processEvents = async () => {
             parameters: r.definition.parameters
         })), ...defaultTools];
 
+        if (chatHistory.slice(-1)[0].role == 'user') {
+            // combine the old part
+            combinedContent.push(...chatHistory.slice(-1)[0].parts);
+            chatHistory = chatHistory.slice(0, -1);
+        }
+
+
         // 2. Update chat history
         chatHistory.push({ role: 'user', parts: combinedContent });
+        saveHistory();
 
-        let messages = chatHistory.slice(-50);
+        let messages = chatHistory.slice(-101);
 
         // Fetch memories and inject into context (as pseudo-history/system setup)
         const currentMemories = getMemories();
@@ -292,10 +318,11 @@ const processEvents = async () => {
             ? currentMemories.map((m, i) => `[MEMORY ${i+1}] ${m.content}`).join('\n')
             : "No memories stored.";
 
-        // Ensure the very old messages start with user
-        if (messages[0].role === 'user') {
-            messages = messages.slice(1);
-        }
+        // if (messages[0].role === 'model') {
+        //     messages = messages.slice(1);
+        // }
+
+        // messages = invalidateChats(messages);
 
         let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
 To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
@@ -451,7 +478,7 @@ ${memoryContext}`;
                             console.log(`🤖 Tool [${fullName}] response:`, toolRes);
 
                             toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
-                            toolResults.push({ text: JSON.stringify({ name: fullName, output: toolRes }) });
+                            toolResults.push({ name: fullName, output: toolRes, time: (new Date()).toString() });
 
                         } catch (err) {
                             console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
@@ -469,6 +496,13 @@ ${memoryContext}`;
         }
     } catch (err) {
         console.error('🤖 Batch Process Error:', err);
+        pendingEvents.push({
+            eventName: 'error',
+            from: 'agent',
+            message: `Error during processing: ${err.message}. please response with function calling to fix the issue or tools.sleep to skip time.`
+        });
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
     } finally {
         chatHistory.push({ role: 'model', parts: toolCalls });
         pendingEvents.push(...toolResults);
@@ -492,7 +526,7 @@ server.connect(toolsSocketPath).then(() => {
 // Listener for ANY generic event - with Debounce aggregation
 server.subscribe('*', 'event', async (req) => {
     console.log(`🤖 Received [${req.eventName}] from ${req.from}. Queuing...`);
-    pendingEvents.push(req);
+    pendingEvents.push({req, time: (new Date()).toString()});
 
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);

@@ -350,17 +350,38 @@ const checkAndNotifyReminders = async () => {
     }
 };
 
+// --- TIMEZONE NORMALIZATION ---
+const normalizeISODateWithTimezone = (isoString) => {
+    if (!isoString) return isoString;
+    
+    // Check if it already has timezone info (Z or ±HH:MM at the end)
+    const hasTimezone = /Z$|[+-]\d{2}:\d{2}$|[+-]\d{4}$/.test(isoString);
+    
+    if (hasTimezone) {
+        return isoString; // Already has timezone, return as-is
+    }
+    
+    // No timezone info - append the system timezone offset
+    const offsetMinutes = TIMEZONE_OFFSET_MINUTES;
+    const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+    const offsetMins = Math.abs(offsetMinutes) % 60;
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const offsetStr = `${sign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+    
+    return `${isoString}${offsetStr}`;
+};
+
 // --- TOOL DEFINITIONS ---
 const calendarTools = [
     {
         name: 'createEvent',
-        description: 'Create a new calendar event. Repeat is an optional cron-like string or "weekend", "workdays", "daily", "weekly".',
+        description: 'Create a new calendar event. If the ISO start date has no timezone, the system timezone is automatically applied. Repeat is an optional cron-like string or "weekend", "workdays", "daily", "weekly".',
         parameters: {
             type: 'object',
             properties: {
                 title: { type: 'string', description: 'Event title' },
                 description: { type: 'string', description: 'Markdown description' },
-                start: { type: 'string', description: 'ISO start date' },
+                start: { type: 'string', description: 'ISO start date (timezone automatically applied if omitted)' },
                 duration: { type: 'number', description: 'Duration in minutes (optional)' },
                 repeat: { type: 'string', description: 'Repeat rule: "daily", "weekly", "workdays", "weekend", "monthly", "yearly", or a function string like "(curr, evnt) => curr.day == evnt.day"' },
                 parallelable: { type: 'boolean', description: 'If false, no other events can overlap with this one (default: true)' },
@@ -440,6 +461,11 @@ server.listen('*', 'createEvent', (req, res) => {
         reminds: req.data.reminds || []
     };
     
+    // Normalize timezone in start date if not present
+    if (eventData.start) {
+        eventData.start = normalizeISODateWithTimezone(eventData.start);
+    }
+    
     // Check for conflicts if event is non-parallelable
     const conflicts = checkConflicts(eventData);
     
@@ -503,6 +529,11 @@ server.listen('*', 'updateEvent', (req, res) => {
     if (index > -1) {
         const existingEvent = calendarData.items[index];
         const updatedEvent = { ...existingEvent, ...updates };
+        
+        // Normalize timezone in start date if being updated
+        if (updates.start) {
+            updatedEvent.start = normalizeISODateWithTimezone(updates.start);
+        }
         
         // Ensure proper boolean defaults
         updatedEvent.parallelable = updatedEvent.parallelable !== false ? true : false;

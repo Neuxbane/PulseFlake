@@ -2,6 +2,7 @@ const socket = io();
 let activeService = null;
 let servicesData = {};
 let calendar = null;
+let calendarData = { items: [] }; // Store raw calendar data for duplication
 
 // --- REPEAT RULE HELPERS ---
 const dateToObj = (date) => {
@@ -204,8 +205,35 @@ function initCalendar() {
         },
         height: '100%',
         events: [],
+        editable: true,
+        eventDurationEditable: true,
+        eventResizableFromStart: true,
+        selectable: true,
+        selectConstraint: 'businessHours',
         eventClick: function(info) {
+            // Ctrl/Cmd + Click to duplicate
+            if (info.jsEvent.ctrlKey || info.jsEvent.metaKey) {
+                duplicateEvent(info.event);
+                return;
+            }
             openEditModal(info.event);
+        },
+        select: function(info) {
+            // Click and drag on empty slot to create new event
+            openCreateModalForSlot(info.start, info.end);
+        },
+        eventDrop: function(info) {
+            // Handle drag to new time
+            saveEventChanges(info.event, {
+                start: info.event.start
+            });
+        },
+        eventResize: function(info) {
+            // Handle resize
+            const duration = Math.round((info.event.end - info.event.start) / 60000);
+            saveEventChanges(info.event, {
+                duration: duration
+            });
         },
         nowIndicator: true,
         slotLabelInterval: '00:30:00',
@@ -243,6 +271,7 @@ function fetchAndUpdateEvents() {
     fetch('/api/calendar/events')
         .then(res => res.json())
         .then(events => {
+            calendarData.items = events; // Store raw data for duplication
             updateCalendarEvents(events);
         })
         .catch(err => {
@@ -471,6 +500,130 @@ function commitEvent() {
         }
     })
     .catch(err => alert('Network error: ' + err.message));
+}
+
+// NEW: Duplicate an event
+function duplicateEvent(event) {
+    const data = event.extendedProps;
+    const eventId = event.id;
+    const originalId = eventId.includes('_') ? eventId.split('_')[0] : eventId;
+    
+    // Find the original event data
+    const originalEvent = calendarData?.items?.find(e => e.id === originalId);
+    if (!originalEvent) {
+        alert('Could not find original event data');
+        return;
+    }
+
+    // Create a new event with the same properties but a new start time (next occurrence)
+    const newStartDate = new Date(event.start);
+    newStartDate.setDate(newStartDate.getDate() + 7); // Duplicate one week later by default
+    
+    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
+    
+    const duplicatedEvent = {
+        title: originalEvent.title,
+        start: formatLocalDateTime(newStartDate),
+        duration: originalEvent.duration || 60,
+        repeat: originalEvent.repeat || '',
+        description: originalEvent.description || '',
+        tags: originalEvent.tags || [],
+        parallelable: originalEvent.parallelable !== false,
+        important: originalEvent.important !== false,
+        reminds: originalEvent.reminds || []
+    };
+
+    fetch('/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            socketPath: calendarPath, 
+            toolName: 'createEvent', 
+            arguments: duplicatedEvent
+        })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            onCalendarPageOpened();
+            appendLog('Calendar', `Duplicated event: ${originalEvent.title}`);
+        } else {
+            alert('Error duplicating event: ' + (res.error || 'Unknown error'));
+        }
+    })
+    .catch(err => alert('Network error: ' + err.message));
+}
+
+// NEW: Open create modal with pre-filled slot time
+function openCreateModalForSlot(startDate, endDate) {
+    editingEventId = null;
+    document.getElementById('modal-event').classList.remove('hidden');
+    document.getElementById('event-title').value = '';
+    document.getElementById('event-title').focus();
+    
+    // Set start time to the selected slot
+    document.getElementById('event-start').value = formatLocalDateTime(startDate);
+    
+    // Calculate duration from slot
+    const durationMs = endDate - startDate;
+    const durationMins = Math.round(durationMs / 60000);
+    document.getElementById('event-duration').value = durationMins || 60;
+    
+    document.getElementById('event-all-day').checked = false;
+    document.getElementById('event-duration').disabled = false;
+    document.getElementById('event-repeat').value = '';
+    document.getElementById('event-repeat-preset').value = '';
+    document.getElementById('event-desc').value = '';
+    document.getElementById('event-tags').value = '';
+    document.getElementById('event-parallelable').checked = false;
+    document.getElementById('event-important').checked = true;
+    document.getElementById('event-reminds').value = '';
+    document.getElementById('btn-save-event').innerText = 'SAVE EVENT';
+    if (document.getElementById('btn-delete-event')) {
+        document.getElementById('btn-delete-event').classList.add('hidden');
+    }
+}
+
+// NEW: Save event changes from drag/resize
+function saveEventChanges(event, updates) {
+    const eventId = event.id;
+    const originalId = eventId.includes('_') ? eventId.split('_')[0] : eventId;
+    
+    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
+    
+    // Convert start date to proper format
+    const updateData = {};
+    if (updates.start) {
+        const startDate = new Date(updates.start);
+        updateData.start = formatLocalDateTime(startDate);
+    }
+    if (updates.duration) {
+        updateData.duration = updates.duration;
+    }
+
+    fetch('/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            socketPath: calendarPath, 
+            toolName: 'updateEvent', 
+            arguments: { id: originalId, updates: updateData }
+        })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (!res.success) {
+            // Revert on error
+            onCalendarPageOpened();
+            appendLog('Calendar', `Error updating event: ${res.error || 'Unknown error'}`);
+        } else {
+            appendLog('Calendar', `Updated event: ${event.title}`);
+        }
+    })
+    .catch(err => {
+        onCalendarPageOpened();
+        appendLog('Calendar', `Network error updating event: ${err.message}`);
+    });
 }
 
 socket.on('calendar_events', (events) => {

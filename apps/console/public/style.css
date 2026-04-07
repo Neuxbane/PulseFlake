@@ -161,3 +161,67 @@ body {
 .fc .fc-now-indicator-container {
     position: relative;
 }
+
+/* Event Dragging and Resizing Styles */
+.fc-event.fc-event-draggable {
+    cursor: grab;
+}
+
+.fc-event.fc-event-draggable:active {
+    cursor: grabbing;
+}
+
+.fc-event-dragging {
+    opacity: 0.7;
+    box-shadow: 0 10px 25px rgba(219, 39, 119, 0.4);
+    z-index: 100;
+}
+
+.fc-event-resizing {
+    opacity: 0.8;
+    box-shadow: 0 10px 25px rgba(219, 39, 119, 0.3);
+}
+
+/* Resize handle appearing at corners */
+.fc-event.fc-event-resizable::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    background: rgba(219, 39, 119, 0.6);
+    cursor: se-resize;
+    border-radius: 0 0 4px;
+}
+
+.fc-event:hover {
+    box-shadow: 0 8px 16px rgba(219, 39, 119, 0.3);
+    transform: scale(1.02);
+}
+
+/* Selection highlight for time slots */
+.fc .fc-timegrid-slot.fc-col-highlight-container {
+    background-color: rgba(219, 39, 119, 0.08);
+}
+
+.fc .fc-daygrid-day.fc-day-other {
+    opacity: 0.3;
+}
+
+.fc-daygrid-day-frame {
+    min-height: 100px;
+}
+
+/* Make day cells more interactive */
+.fc-daygrid-day:hover {
+    background-color: rgba(219, 39, 119, 0.02);
+}
+
+.fc .fc-highlight {
+    background: rgba(219, 39, 119, 0.15);
+}
+
+.fc .fc-selecthelper-dragging > .fc-event {
+    opacity: 0.65;
+}

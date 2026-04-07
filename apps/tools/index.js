@@ -64,7 +64,7 @@ server.listen('*', 'search', async(req, res) => {
                 definition,
                 searchMethod: 'rag'
             };
-        }).sort((a, b) => b.similarity - a.similarity).slice(0, 10);
+        }).sort((a, b) => b.similarity - a.similarity).slice(0, 20);
         res.send(results);
     } catch (err) {
         console.error(`[tools] Search (RAG) error:`, err.message);
@@ -113,9 +113,9 @@ server.listen('*', 'search-rules', async(req, res) => {
             }
         }
         
-        // Sort by match count (descending) and limit to 10
+        // Sort by match count (descending) and limit to 20
         results.sort((a, b) => b.matchCount - a.matchCount);
-        res.send(results.slice(0, 10));
+        res.send(results.slice(0, 20));
     } catch (err) {
         console.error(`[tools] Search (rules) error:`, err.message);
         res.send([]);
