@@ -51,6 +51,7 @@ class UAJYScraper {
 
   async getTasks() {
     if (!this.sesskey) await this.login();
+    this.getCourses();
     const url = `https://kuliah.uajy.ac.id/lib/ajax/service.php?sesskey=${this.sesskey}&info=core_calendar_get_action_events_by_timesort`;
     const res = await this.client.post(url, [{
       index: 0, methodname: 'core_calendar_get_action_events_by_timesort', 

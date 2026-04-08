@@ -73,7 +73,7 @@ server.listen('*', 'search', async(req, res) => {
 });
 
 // Contain rules based search - keyword matching
-server.listen('*', 'search-rules', async(req, res) => {
+server.listen('*', 'strict-search', async(req, res) => {
     try {
         const query = typeof req.data === 'string' ? req.data : JSON.stringify(req.data);
         // Extract keywords (split by space, remove special chars, lowercase)
@@ -88,8 +88,8 @@ server.listen('*', 'search-rules', async(req, res) => {
             for (const definition of toolList) {
                 const fullToolName = `${identifier}.${definition.name}`;
                 
-                // Build searchable text from tool definition
-                const searchText = `${definition.name} ${definition.description} ${JSON.stringify(definition.parameters)}`.toLowerCase();
+                // Build searchable text from tool name and description only
+                const searchText = `${definition.name} ${definition.description}`.toLowerCase();
                 
                 // Count how many keywords match
                 let matchCount = 0;
@@ -107,7 +107,7 @@ server.listen('*', 'search-rules', async(req, res) => {
                         name: definition.name,
                         matchCount,
                         definition,
-                        searchMethod: 'rules'
+                        searchMethod: 'strict'
                     });
                 }
             }
@@ -117,7 +117,7 @@ server.listen('*', 'search-rules', async(req, res) => {
         results.sort((a, b) => b.matchCount - a.matchCount);
         res.send(results.slice(0, 20));
     } catch (err) {
-        console.error(`[tools] Search (rules) error:`, err.message);
+        console.error(`[tools] Strict search error:`, err.message);
         res.send([]);
     }
 });
@@ -190,7 +190,7 @@ server.start().then(() => {
             }
         },
         {
-            name: 'search-rules',
+            name: 'strict-search',
             description: 'Search for tools relevant to a query using keyword contain rules matching',
             parameters: {
                 type: 'object',

@@ -197,7 +197,7 @@ async function handleSpawnSubagent(args, parentId = 'main') {
     console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools for sub-agent ${id}`);
     
     // 2. Contain rules search for relevant tools
-    const rulesSearchResults = await server.request('tools', 'search-rules', args.goal);
+    const rulesSearchResults = await server.request('tools', 'strict-search', args.goal);
     console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools for sub-agent ${id}`);
     
     // Combine both results, deduplicate by tool name
@@ -279,7 +279,7 @@ const processEvents = async () => {
         console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools`);
         
         // 2. Contain rules search for relevant tools
-        const rulesSearchResults = await server.request('tools', 'search-rules', combinedContent);
+        const rulesSearchResults = await server.request('tools', 'strict-search', combinedContent);
         console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools`);
         
         // Combine both results, prioritizing RAG then Rules, deduplicate by tool name
