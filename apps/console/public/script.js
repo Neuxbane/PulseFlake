@@ -306,9 +306,30 @@ function updateCalendarEvents(events) {
         calendar.removeAllEvents();
         let formattedEvents = [];
         
+        // Helper to generate a light color based on a seed string
+        const getSeededColor = (seed) => {
+            let hash = 0;
+            for (let i = 0; i < seed.length; i++) {
+                hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            
+            // Generate HSL color: 
+            // Hue from hash (0-360)
+            // Saturation 60-80% (vibrant but not too much)
+            // Lightness 70-85% (pastel/light)
+            const h = Math.abs(hash % 360);
+            const s = 70 + (Math.abs(hash % 20)); 
+            const l = 75 + (Math.abs(hash % 10));
+            return `hsl(${h}, ${s}%, ${l}%)`;
+        };
+
         // Iterate through each event and expand using repeat rule
         events.forEach(ev => {
             const occurrences = expandEventOccurrences(ev);
+            
+            // Sort tags to ensure consistent seeding regardless of tag order
+            const sortedTags = (ev.tags || []).slice().sort().join(',');
+            const eventColor = sortedTags ? getSeededColor(sortedTags) : '#ec4899'; // Default pink if no tags
             
             occurrences.forEach(occ => {
                 const base = {
@@ -317,6 +338,9 @@ function updateCalendarEvents(events) {
                     start: occ.occurrenceStart,
                     allDay: occ.allDay || false,
                     description: occ.description,
+                    backgroundColor: eventColor,
+                    borderColor: eventColor,
+                    textColor: '#111827', // Dark text for light backgrounds
                     extendedProps: { ...ev }
                 };
                 
