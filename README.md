@@ -1,8 +1,52 @@
-# PulseFlake💕
+# PulseFlake 💕
 
-**PulseFlake** (formerly **FuckingLonely**) is a decentralized, **Event-Driven Reactive AI** ecosystem. It is designed to bridge **Multi-Modal Large Language Models (MLLM)** with real-world applications through a high-performance **Unix Socket IPC** layer.
+<p align="center">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
+  <img alt="Platform" src="https://img.shields.io/badge/Platform-Linux%20%2F%20macOS-lightgrey">
+  <img alt="AI" src="https://img.shields.io/badge/AI-Gemini%20%7C%20Pluggable-blueviolet">
+</p>
+
+**PulseFlake** (formerly **FuckingLonely**) is a decentralized, **Event-Driven Reactive AI** ecosystem. It bridges **Multi-Modal Large Language Models (MLLM)** with real-world applications through a high-performance **Unix Socket IPC** layer.
 
 By decoupling the AI "brain" from its "sensors" and "tools," PulseFlake enables modular, scalable, and highly reactive autonomous agents that can process multi-modal events and orchestrate complex tool-driven workflows.
+
+---
+
+## 📋 Table of Contents
+
+- [Why PulseFlake?](#-why-pulseflake)
+- [Technical Architecture](#-technical-architecture)
+- [Architecture Overview](#-architecture-overview)
+- [Current Apps](#-current-apps)
+- [Project Structure](#-project-structure)
+- [Multi-Agent Orchestration](#-multi-agent-orchestration)
+- [Quick Start](#-quick-start)
+- [Calendar Features](#-calendar-features)
+- [Development & Contributions](#-development--contributions)
+- [The Story of PulseFlake](#-the-story-of-pulseflake)
+- [Technical Details](#-technical-details)
+- [License](#-license)
+
+---
+
+## 💡 Why PulseFlake?
+
+In most systems, your Calendar, Chat app, and code projects operate in silos — they don't talk to each other. PulseFlake bridges them using a **Generic Tool Pattern** powered by an autonomous AI agent.
+
+**Imagine this scenario:** A critical bug is reported in your Discord while you're working on a project. Normally you'd manually switch between 4–5 apps. With PulseFlake:
+
+1.  **Event Reception**: A monitoring app detects the error and broadcasts it to the `Agent`.
+2.  **Autonomous Decision**: The `Agent` semantically searches the `Tools Registry` and finds the right tools.
+3.  **Cross-Socket Execution**: It reads your log files via the `Device` app, searches docs via the `Internet` app, and replies to your user on Discord — automatically.
+4.  **Action Persistence**: Every step is recorded in a shared `Memory` layer so the Agent never repeats itself.
+
+**The implementation pattern is always the same:**
+- **Define the Capability**: Write a JSON schema for your tool (e.g., `execute_ssh_command`).
+- **Expose the Socket**: Use `UnixSocket.js` to listen for calls to that capability.
+- **Register & Forget**: Once registered in the `Tools Registry`, the `Agent` discovers and uses your tool whenever context demands it — no rewiring needed.
+
+---
 
 ## 🏗️ Technical Architecture
 
@@ -10,75 +54,56 @@ PulseFlake is built on a modular, event-driven architecture using **Unix Socket 
 
 ### **The Core Philosophy: "Everything is a Socket"**
 
-At its most abstract, the system consists of three fundamental primitives:
+The system rests on three fundamental primitives:
 
-1.  **The Bus (`UnixSocket.js`)**: A lightweight wrapper around Node's `net` module that allows any process to act as both a **Server** (listening for requests) and a **Client** (sending requests/broadcasts) over Unix domain sockets.
-2.  **The Provider (`BaseProvider.js`)**: A generic interface for "Intelligence." It doesn't care if the intelligence comes from Gemini, Llama, or a set of hardcoded rules. It translates multi-modal inputs into structured tool calls and text responses.
-3.  **The Registry (`apps/tools`)**: A central process that keeps track of which socket "owns" which capability.
+| Primitive | File | Role |
+| :--- | :--- | :--- |
+| **The Bus** | `utils/UnixSocket.js` | Lightweight wrapper around Node's `net` module. Any process can act as both a **Server** (listening for requests) and a **Client** (sending requests/broadcasts) over Unix domain sockets or TCP. |
+| **The Provider** | `utils/BaseProvider.js` | A model-agnostic interface for "Intelligence." It doesn't care whether the model is Gemini, Llama, or hardcoded rules — it translates multi-modal inputs into structured tool calls and streaming text responses. |
+| **The Registry** | `apps/tools/` | A central RAG-powered process that indexes which socket "owns" which capability, enabling semantic tool discovery. |
 
 ### **Abstract Workflow**
 
 ```mermaid
 sequenceDiagram
-    participant App A (Requester)
-    participant Bus (Unix Sockets)
-    participant Registry (Tools)
-    participant App B (Provider)
+    participant Requester as App A (Requester)
+    participant Bus as Bus (Unix Sockets)
+    participant Registry as Registry (Tools)
+    participant Provider as App B (Provider)
 
-    Note over App B: 1. Initialization
-    App B->>Bus: Create socket 'app-b.sock'
-    App B->>Registry: Register "Tool X" via Bus
+    Note over Provider: 1. Initialization
+    Provider->>Bus: Create socket app-b.sock
+    Provider->>Registry: Register "Tool X" via Bus
 
-    Note over App A: 2. Discovery & Execution
-    App A->>Registry: "Who can do Tool X?"
-    Registry-->>App A: "App B can"
-    App A->>Bus: Request 'Tool X' from 'app-b.sock'
-    Bus->>App B: Incoming Request
-    App B-->>Bus: Response Data
-    Bus-->>App A: Final Result
+    Note over Requester: 2. Discovery & Execution
+    Requester->>Registry: "Who can do Tool X?"
+    Registry-->>Requester: "App B can"
+    Requester->>Bus: Request Tool X from app-b.sock
+    Bus->>Provider: Incoming Request
+    Provider-->>Bus: Response Data
+    Bus-->>Requester: Final Result
 ```
 
 ### **The "Generic" Micro-App Pattern**
 
-Every micro-app follows a standard lifecycle enabled by the `UnixSocket` utility:
+Every micro-app follows a standard lifecycle:
 
-1.  **Identity**: Each app creates a `new UnixSocket("app-name")`.
-2.  **Registration**: On startup, it connects to a discovery socket (usually `tools.sock`) and sends its JSON schema.
-3.  **Interface**: It uses `server.listen('*', 'method', callback)` to wait for incoming instructions.
-4.  **Decoupling**: No app needs to know the physical location or implementation details of another. They only need to know the **Method Name** and the **Socket Identifier**.
-
----
-
-## 📖 The Story of PulseFlake
-
-The project began as a personal endeavor to bridge the gap between AI and daily digital life, evolving through several stages of architectural complexity.
-
-### **The Evolution**
-
-*   **V1: The Beginning (June 2025)**  
-    Originally titled **FuckingLonely**, this version focused on creating a unified AI assistant that could monitor Discord and manage basic memories. It was a monolithic structure that set the foundation for context awareness and basic tool use.
-    
-*   **V2: Refined Core (Late 2025)**  
-    The project shifted towards a "Character" based system, introducing more modular modules like `api-monitor.js` and early scraping attempts. It was here that the modular philosophy began to take root.
-
-*   **V3 & V4: The Bus & Apps (Early 2026)**  
-    Version 3 introduced the concept of a "Bus" for inter-process communication. By Version 4, the system started splitting into specialized folders for `ai`, `discord`, `internet`, and `system` tasks, moving away from a single script.
-
-*   **V5: The Final Prototype (March 2026)**  
-    V5 refined the provider system (supporting various Gemini models) and perfected the scraper logic (like the University portal). It was the most stable version before the current transition to the **PulseFlake** architecture.
-
-*   **PulseFlake💕 (Current)**  
-    The latest evolution. A fully decentralized micro-app ecosystem where the Agent and Tools are distinct services, communicating via specialized Unix Sockets for maximum flexibility and performance.
+1.  **Identity**: `new UnixSocket("app-name")` — creates `app-name.sock`.
+2.  **Registration**: On startup, connects to `tools.sock` and sends its JSON schema.
+3.  **Interface**: `server.listen('*', 'method', callback)` — waits for incoming instructions.
+4.  **Decoupling**: No app needs to know the location or implementation of another. They only need the **Method Name** and the **Socket Identifier**.
 
 ---
 
 ## 🏛️ Architecture Overview
 
-The system is designed around a "Manager-Worker" pattern where all apps are equals but fulfill specific roles:
+All apps are peers, but fulfill specific roles in the ecosystem:
 
-1.  **The Agent (`apps/agent`)**: The central logic engine. It receives events from other apps and uses **Gemini 3.1 Flash (Lite)** to decide which tools to invoke.
-2.  **The Tools Registry (`apps/tools`)**: A RAG-powered (Retrieval-Augmented Generation) lookup service. Apps register their "function definitions" here, and the Agent searches for them on-demand.
-3.  **The Apps (`apps/*`)**: Specialized modules that either provide input (Events) or perform actions (Tools).
+| Role | App | Description |
+| :--- | :--- | :--- |
+| 🧠 **Brain** | `apps/agent` | Central logic engine. Receives events, uses **Gemini Flash** to decide which tools to invoke, and supports recursive multi-agent orchestration. |
+| 🔧 **Registry** | `apps/tools` | RAG-powered tool lookup service. Apps register function schemas here; the Agent queries semantically on-demand. |
+| 📦 **Apps** | `apps/*` | Specialized modules that either supply input (**Events**) or perform actions (**Tools**). |
 
 ---
 
@@ -87,78 +112,78 @@ The system is designed around a "Manager-Worker" pattern where all apps are equa
 | App | Description |
 | :--- | :--- |
 | **Agent** 🤖 | The brain. Processes incoming events and determines the best course of action using tool-calling. Supports recursive multi-agent orchestration and memory management. |
-| **Calendar** 📅 | Full-featured event management system. Supports recurring events (daily, weekly, workdays, weekend, monthly, yearly, custom), conflict detection, reminders, timelines, and timezone support. |
-| **Console** 🎛️ | Enhanced web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. Features real-time event monitoring and tool exploration. |
-| **Device** 🖥️ | System device integration for command execution, file operations, and remote connection handling. |
-| **Discord** 💬 | A bridge between Discord channels/DMs and the Agent. Supports message handling, reactions, and event broadcasting. |
-| **Imagen** 🎨 | Image generation tool using Pollinations AI. Generates images based on natural language prompts. |
-| **Internet** 🌐 | Provides web search and content retrieval capabilities to the Agent. |
-| **Tools** 🔧 | The system registry where all available tool definitions are indexed using vector embeddings. |
+| **Calendar** 📅 | Full-featured event management. Supports recurring events (daily, weekly, workdays, weekend, monthly, yearly, custom), conflict detection, reminders, timelines, and timezone support. |
+| **Console** 🎛️ | Web-based GUI to monitor active services, manually trigger tools, and chat with the Agent. Features real-time event monitoring and tool exploration. |
+| **Device** 🖥️ | System integration for command execution, file operations, and remote connection handling. |
+| **Discord** 💬 | Bridge between Discord channels/DMs and the Agent. Supports message handling, reactions, and event broadcasting. |
+| **Imagen** 🎨 | Image generation using Pollinations AI, driven by natural language prompts. |
+| **Internet** 🌐 | Web search and content retrieval for the Agent. |
+| **Tools** 🔧 | System registry where all tool definitions are indexed using vector embeddings for semantic discovery. |
 | **University** 🏛️ | Scraper for the UAJY student portal. Supports login, fetching courses, tasks, and content. |
-| **WhatsApp** 📱 | A bridge for WhatsApp Messenger. Supports reading chats, sending messages, note management, and chat summarization. |
-| **Template** 📂 | A boilerplate for quickly spinning up new PulseFlake micro-apps. |
+| **WhatsApp** 📱 | Bridge for WhatsApp Messenger. Supports reading chats, sending messages, note management, and chat summarization. |
+| **Template** 📂 | Boilerplate for quickly spinning up new PulseFlake micro-apps. |
 
 ---
 
-## 🎯 Generic Use Case: Multi-Agent Orchestration
+## 📁 Project Structure
 
-PulseFlake supports **Recursive Multi-Agent Orchestration**. The main Agent can spawn **Sub-Agents** to handle complex, long-running, or isolated sub-tasks.
+```
+PulseFlake/
+├── apps/
+│   ├── agent/          # Core AI agent (brain)
+│   ├── calendar/       # Event management system
+│   ├── console/        # Web-based monitoring GUI
+│   ├── device/         # OS-level command execution
+│   ├── discord/        # Discord bridge
+│   ├── imagen/         # AI image generation
+│   ├── internet/       # Web search & scraping
+│   ├── tools/          # Tool registry (RAG-powered)
+│   ├── university/     # UAJY student portal scraper
+│   ├── whatsapp/       # WhatsApp bridge
+│   └── template/       # Boilerplate for new apps
+├── providers/
+│   └── gemini.js       # Gemini provider implementation
+├── utils/
+│   ├── UnixSocket.js   # IPC bus (server + client)
+│   ├── BaseProvider.js # Abstract AI provider interface
+│   └── Providers.js    # Provider registry/exports
+├── docs/
+│   ├── making-apps.md       # Guide: building new micro-apps
+│   └── making-providers.md  # Guide: adding AI providers
+├── .env.example        # Environment variable template
+└── package.json
+```
+
+---
+
+## 🎯 Multi-Agent Orchestration
+
+PulseFlake supports **Recursive Multi-Agent Orchestration**. The main Agent can spawn isolated Sub-Agents for complex, long-running, or parallel sub-tasks.
 
 ### **Sub-Agent Workflow**
-1.  **Spawn**: The Main Agent calls `agent.spawnSubagent({ goal: "Task description" })`.
-2.  **Isolation**: The Sub-Agent receives the goal and its own tool-calling loop. It does **not** hear global system events, ensuring focus.
-3.  **Recursive**: Sub-Agents can spawn their own nested Sub-Agents if a task needs further decomposition.
-4.  **Reporting**: Once finished, the Sub-Agent uses the `agent.done({ message: "Result" })` tool to report back to its parent and terminate.
 
----
+```
+Main Agent
+ └── spawnSubagent({ goal: "Research X and summarize" })
+      └── Sub-Agent A
+           ├── Calls internet.search(...)
+           ├── Calls device.readFile(...)
+           └── spawnSubagent({ goal: "Translate result" })  ← recursive
+                └── Sub-Agent B
+                     └── agent.done({ message: "Translation complete" })
+```
 
-## 🚀 Getting Started
-
-1.  **Clone & Install**: `npm install`
-2.  **Environment Setup**: Create a `.env` file with your `GEMINI_API_KEYS`.
-3.  **Launch the System**: Run individual apps (e.g., `node apps/agent/index.js`, `node apps/discord/index.js`, etc.).
-4.  **Interact**: Use the Discord bridge or the Console to begin interacting with the Agent.
-
----
-
-## 🛡️ License
-
-MIT License. Designed with ❤️ for the future of decentralized AI.
-
-PulseFlake is designed to solve the problem of **disconnected digital tools**. In most systems, your Calendar, your Chat, and your Code projects don't talk to each other. PulseFlake bridges them using the **Generic Tool Pattern**.
-
-### **The Real-World Problem**
-Imagine you are working on a code project and a critical bug is reported in your Discord. You need to:
-1.  Check the error logs.
-2.  Search documentation for a fix.
-3.  Deploy a patch.
-4.  Update the user on Discord.
-
-Normally, this requires manual switching between 4-5 different apps.
-
-### **The PulseFlake Solution (The "Flow")**
-Because PulseFlake uses a **Decoupled Architecture**, you can add any tool without rebuilding the core:
-
-1.  **Event Reception**: A `Monitoring App` listens for errors and broadcasts an event to the `Agent`.
-2.  **Autonomous Decision**: The `Agent` queries the `Tools Registry` for a "Search" tool and "File Reader" tool.
-3.  **Cross-Socket Execution**:
-    *   The `Agent` calls the `Filesystem App` to read the log files.
-    *   It calls the `Internet App` to search for the specific error signature.
-    *   It generates a summary and sends it back to the `Discord App`.
-4.  **Action Persistence**: Every step is recorded in a shared `Memory` layer, so the Agent "remembers" it already tried searching for that specific bug.
-
-### **Core Implementation Pattern**
-To implement any real-world solution, you only need to follow this pattern:
-
-*   **Define the Capability**: Create a JSON schema for your tool (e.g., `execute_ssh_command`).
-*   **Expose the Socket**: Use `UnixSocket.js` to listen for that capability name.
-*   **Register & Forget**: Once registered in the `Tools Registry`, the `Agent` will automatically discover and use your tool whenever the context requires it.
+1.  **Spawn**: `agent.spawnSubagent({ goal: "Task description" })`
+2.  **Isolation**: Sub-Agents have their own tool-calling loop and do **not** receive global system events.
+3.  **Recursive**: Sub-Agents can spawn further nested Sub-Agents for decomposed work.
+4.  **Reporting**: On completion, `agent.done({ message: "Result" })` returns the result to the parent and terminates the sub-agent.
 
 ---
 
 ## ⚡ Quick Start
 
 ### **1. Installation**
+
 ```bash
 git clone https://github.com/Neuxbane/PulseFlake.git
 cd PulseFlake
@@ -166,86 +191,174 @@ npm install
 ```
 
 ### **2. Environment Setup**
-Create a `.env` file in the root with your API keys:
+
+Copy `.env.example` to `.env` and fill in your credentials:
+
 ```env
-GEMINI_API_KEYS=your_key1,your_key2
-DISCORD_TOKEN=your_token
+GEMINI_API_KEYS=your_key1,your_key2   # comma-separated for key rotation
+DISCORD_TOKEN=your_discord_bot_token  # optional
 ```
 
 ### **3. Running the Ecosystem**
-It is recommended to run each service in its own `screen` or `pm2` process.
 
-**Base system:**
+Run each service in its own terminal, `screen`, or `pm2` process.
+
+**Required (start in this order):**
 ```bash
-node apps/tools/index.js      # Required first (Registry)
-node apps/agent/index.js      # Required second (Brain)
+node apps/tools/index.js      # 1. Registry — must start first
+node apps/agent/index.js      # 2. Brain — must start second
 ```
 
-**Feature modules:**
+**Optional feature modules:**
 ```bash
-node apps/discord/index.js
-node apps/university/index.js
-node apps/internet/index.js
-node apps/calendar/index.js
-node apps/device/index.js
+node apps/console/index.js    # Web GUI
+node apps/discord/index.js    # Discord bridge
+node apps/whatsapp/index.js   # WhatsApp bridge
+node apps/internet/index.js   # Web search
+node apps/calendar/index.js   # Calendar management
+node apps/device/index.js     # OS integration
+node apps/university/index.js # UAJY portal scraper
+node apps/imagen/index.js     # Image generation
 ```
+
+### **4. Interact**
+
+- Open the **Console** at the URL printed by `apps/console/index.js`.
+- Or chat via the **Discord** or **WhatsApp** bridge.
 
 ---
 
 ## 📅 Calendar Features
 
-The **Calendar** app provides comprehensive event management with advanced scheduling capabilities:
+The **Calendar** app provides comprehensive event management with advanced scheduling:
 
 ### **Core Features**
-- **Event Management**: Create, read, update, and delete calendar events.
-- **Recurring Events**: Support for multiple recurrence patterns:
+- **CRUD**: Create, read, update, and delete calendar events.
+- **Recurring Events**: Multiple recurrence patterns:
   - Built-in: `daily`, `weekly`, `workdays`, `weekend`, `monthly`, `yearly`
-  - Custom: Function-based rules like `(curr, evnt) => curr.day == evnt.day`
+  - Custom: Function-based rules, e.g. `(curr, evnt) => curr.day == evnt.day`
 - **Conflict Detection**: Prevents overlapping events based on event importance and parallelability.
-- **Reminders**: Set multiple reminder times (in seconds) before events trigger notifications to the Agent.
-- **Timeline View**: Fetch upcoming events with automatic processing of recurring patterns.
-- **Timezone Awareness**: Automatic detection and handling of system timezone.
+- **Reminders**: Multiple reminder times (in seconds before the event) that notify the Agent.
+- **Timeline View**: Fetch upcoming events with automatic expansion of recurring patterns.
+- **Timezone Awareness**: Automatic detection and handling of the system timezone.
 
-### **Event Properties**
+### **Event Schema**
+
 ```javascript
 {
-  title: string,                   // Event name (required)
-  description: string,             // Markdown description
-  start: ISO8601,                  // Event start date/time
-  duration: number,                // Duration in minutes
-  repeat: string,                  // Recurrence rule
-  parallelable: boolean,           // Can overlap with other events (default: true)
-  important: boolean,              // Mark as important (default: true)
-  reminds: number[],               // Reminder times in seconds before event
-  attachments: object[],           // URLs, images, or files
-  tags: string[]                   // Event categorization
+  title:        string,     // Event name (required)
+  description:  string,     // Markdown description
+  start:        ISO8601,    // Event start date/time
+  duration:     number,     // Duration in minutes
+  repeat:       string,     // Recurrence rule (e.g. 'daily', 'weekly')
+  parallelable: boolean,    // Allow overlap with other events (default: true)
+  important:    boolean,    // Mark as high-priority (default: true)
+  reminds:      number[],   // Seconds-before-event for each reminder
+  attachments:  object[],   // URLs, images, or file references
+  tags:         string[]    // Categorization tags
 }
 ```
 
 ### **Available Tools**
-- `createEvent`: Create new calendar events with conflict checking.
-- `listEvents`: Retrieve all raw event data.
-- `updateEvent`: Modify existing events.
-- `deleteEvent`: Remove events from the calendar.
-- `timeline`: Get upcoming events (automatically expands recurring patterns).
-- `getUpcomingReminders`: Fetch events with scheduled reminders.
+
+| Tool | Description |
+| :--- | :--- |
+| `createEvent` | Create a new event with conflict checking |
+| `listEvents` | Retrieve all raw event records |
+| `updateEvent` | Modify an existing event |
+| `deleteEvent` | Remove an event |
+| `timeline` | Upcoming events with recurring-pattern expansion |
+| `getUpcomingReminders` | Events with scheduled reminders |
 
 ---
 
 ## 🛠️ Development & Contributions
 
-PulseFlake is built to be extended. Whether you want to add new capabilities or support new AI models, follow the guides below:
+PulseFlake is designed to be extended. Follow the guides below to add capabilities or support new AI models.
 
-*   **[Making New Apps](docs/making-apps.md)**: Learn how to create micro-apps that register tools and broadcast events.
-*   **[Adding AI Providers](docs/making-providers.md)**: Guide on extending the `BaseProvider` to support LLMs like OpenAI, Anthropic, or local Ollama instances.
+### **Creating a New App**
+
+Copy `apps/template/index.js` and follow the pattern:
+
+```javascript
+const server = new (require('#UnixSocket'))("my-app");
+
+// 1. Define tools
+const myTools = [{
+    name: 'doSomething',
+    description: 'Explain what this tool does clearly for the AI',
+    parameters: {
+        type: 'object',
+        properties: { input: { type: 'string' } },
+        required: ['input']
+    }
+}];
+
+// 2. Register on startup
+server.connect(TOOLS_SOCKET_PATH, async () => {
+    await server.request('tools', 'register', myTools);
+});
+
+// 3. Handle requests
+server.listen('*', 'doSomething', async (req, res) => {
+    res.send({ result: 'processed: ' + req.data.input });
+});
+
+// 4. Start server
+server.start();
+```
+
+### **Adding an AI Provider**
+
+Extend `BaseProvider` and register it in `utils/Providers.js`:
+
+```javascript
+const BaseProvider = require('#BaseProvider');
+
+class OpenAIProvider extends BaseProvider {
+    async *generate(messages, options) { /* streaming logic */ }
+    async embed(parts, options)        { /* embedding logic */ }
+}
+```
+
+### **Full Guides**
+
+- **[Making New Apps](docs/making-apps.md)** — UnixSocket API, lifecycle, and best practices.
+- **[Adding AI Providers](docs/making-providers.md)** — Extending `BaseProvider` for OpenAI, Anthropic, Ollama, etc.
+
+---
+
+## 📖 The Story of PulseFlake
+
+The project began as a personal effort to bridge AI with everyday digital life, evolving through several architectural stages.
+
+| Version | Period | Highlights |
+| :--- | :--- | :--- |
+| **V1** | June 2025 | Originally **FuckingLonely**. Monolithic Discord assistant with basic memory and context awareness. |
+| **V2** | Late 2025 | Shifted to a "Character" system. Introduced `api-monitor.js` and early scraping. Modular philosophy took root. |
+| **V3 / V4** | Early 2026 | Introduced the IPC "Bus." Began splitting into `ai`, `discord`, `internet`, and `system` folders. |
+| **V5** | March 2026 | Refined provider system (multi-Gemini model support). Most stable prototype before the full architecture overhaul. |
+| **PulseFlake 💕** | 2026+ | Fully decentralized micro-app ecosystem. Agent and Tools are distinct services communicating via Unix Sockets. |
 
 ---
 
 ## 📜 Technical Details
 
-*   **Communication**: JSON-delimited line messages over Unix Domain Sockets (`.sock`).
-*   **Provider**: Gemini 3.1 Flash (Lite/Preview) for thinking and embedding.
-*   **Discovery**: Semantic search (cosine similarity) allows the Agent to find tools even if if doesn't know their exact names.
+| Aspect | Detail |
+| :--- | :--- |
+| **Communication** | JSON-delimited line messages (`\n`) over Unix Domain Sockets (`.sock`) or TCP |
+| **Transport** | Supports Unix sockets, TCP ports, and TCP URLs (`tcp://host:port`) |
+| **AI Provider** | Gemini Flash (Lite/Preview) — pluggable via `BaseProvider` |
+| **Tool Discovery** | Cosine-similarity semantic search — the Agent finds tools even without exact names |
+| **Key Rotation** | Multiple `GEMINI_API_KEYS` rotated automatically for rate-limit resilience |
+| **Reconnection** | Automatic client reconnect with 1 s backoff on connection loss |
+| **Runtime** | Node.js 18+ (CommonJS modules) |
+
+---
+
+## 🛡️ License
+
+MIT License. Designed with ❤️ for the future of decentralized AI.
 
 ---
 
