@@ -19,11 +19,23 @@ const CONSOLE_HISTORY_PATH = path.resolve(__dirname, 'console-history.json');
 let consolePassword = process.env.CONSOLE_PASSWORD;
 let consoleUsername = process.env.CONSOLE_USERNAME || 'admin';
 
+const displayHost = (() => {
+    if (process.env.HOSTNAME) {
+        try {
+            const url = new URL(process.env.HOSTNAME);
+            return url.host;
+        } catch (e) {
+            return process.env.HOSTNAME.replace(/^https?:\/\//, '');
+        }
+    }
+    return `localhost:${PORT}`;
+})();
+
 if (!consolePassword) {
     consolePassword = crypto.randomBytes(8).toString('hex');
-    console.log(`\n\x1b[33m[console] 🔑 NO PASSWORD CONFIGURED! USE: \x1b[1m${consoleUsername}:${consolePassword}@localhost:${PORT}\x1b[0m\n`);
+    console.log(`\n\x1b[33m[console] 🔑 NO PASSWORD CONFIGURED! USE: \x1b[1m${consoleUsername}:${consolePassword}@${displayHost}\x1b[0m\n`);
 } else {
-    console.log(`\n\x1b[32m[console] 🛡️ AUTH ACTIVE: \x1b[1m${consoleUsername}:${consolePassword}@localhost:${PORT}\x1b[0m\n`);
+    console.log(`\n\x1b[32m[console] 🛡️ AUTH ACTIVE: \x1b[1m${consoleUsername}:${consolePassword}@${displayHost}\x1b[0m\n`);
 }
 
 // Browser Basic Auth Middleware
@@ -370,7 +382,8 @@ io.on('connection', (socket) => {
 
 // --- 4. START ---
 httpServer.listen(PORT, () => {
-    console.log(`🚀 PulseFlake Console active at http://localhost:${PORT}`);
+    const activeUrl = process.env.HOSTNAME || `http://localhost:${PORT}`;
+    console.log(`🚀 PulseFlake Console active at ${activeUrl}`);
 });
 
 server.start();

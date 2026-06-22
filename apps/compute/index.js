@@ -470,7 +470,8 @@ server.listen('*', 'downloadable', async (req, res) => {
             }
         }, expires * 1000);
         
-        const downloadUrl = `http://localhost:${CONSOLE_PORT}/downloads/${destFilename}`;
+        const baseUrl = process.env.HOSTNAME ? process.env.HOSTNAME.replace(/\/$/, '') : `http://localhost:${CONSOLE_PORT}`;
+        const downloadUrl = `${baseUrl}/downloads/${destFilename}`;
         
         res.send({
             success: true,
