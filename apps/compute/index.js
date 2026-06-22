@@ -32,8 +32,18 @@ const getHostTempPath = () => {
     return fs.mkdtempSync(path.join(baseTemp, 'transfer-'));
 };
 
-const startContainer = (containerName, image) => {
-    const runCmd = `docker run -d --name ${containerName} "${image}" tail -f /dev/null`;
+const getHostRootPath = (sessionId) => {
+    const safeId = (sessionId || 'default').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const hostRootPath = path.resolve(__dirname, 'root', safeId);
+    if (!fs.existsSync(hostRootPath)) {
+        fs.mkdirSync(hostRootPath, { recursive: true });
+    }
+    return hostRootPath;
+};
+
+const startContainer = (containerName, image, sessionId) => {
+    const hostRootPath = getHostRootPath(sessionId);
+    const runCmd = `docker run -d --name ${containerName} -v "${hostRootPath}:/root" "${image}" tail -f /dev/null`;
     console.log(`[compute] Starting background container: ${runCmd}`);
     return new Promise((resolve, reject) => {
         exec(runCmd, (err) => {
@@ -61,7 +71,7 @@ const ensureContainer = async (sessionId, image = 'python:3.10-alpine') => {
                 if (containerImage !== image) {
                     console.log(`[compute] Container ${containerName} image mismatch (current: ${containerImage}, requested: ${image}). Recreating...`);
                     exec(`docker rm -f ${containerName}`, (rmErr) => {
-                        startContainer(containerName, image).then(resolve).catch(reject);
+                        startContainer(containerName, image, sessionId).then(resolve).catch(reject);
                     });
                 } else if (!isRunning) {
                     console.log(`[compute] Container ${containerName} exists but is stopped. Starting...`);
@@ -73,7 +83,7 @@ const ensureContainer = async (sessionId, image = 'python:3.10-alpine') => {
                     resolve(containerName);
                 }
             } else {
-                startContainer(containerName, image).then(resolve).catch(reject);
+                startContainer(containerName, image, sessionId).then(resolve).catch(reject);
             }
         });
     });
@@ -762,7 +772,7 @@ server.listen('*', 'search', async (req, res) => {
 // --- CONVERTER SETUP ---
 const CONVERTER_IMAGE = 'pulseflake-converter';
 const DOCKERFILE_CONTENT = `FROM python:3.10-slim
-RUN pip install --no-cache-dir markitdown
+RUN pip install --no-cache-dir "markitdown[all]"
 WORKDIR /app
 `;
 
@@ -921,3 +931,4 @@ server.connect(TOOLS_SOCKET_PATH, async () => {
 });
 
 server.start();
+// trigger restart

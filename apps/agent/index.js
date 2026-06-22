@@ -9,6 +9,46 @@ const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') 
 
 const provider = new GeminiProvider({ apiKeys, models });
 
+const tryExtractFunctionCall = (text) => {
+    if (!text) return null;
+    
+    try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && parsed.name && parsed.args) {
+            return parsed;
+        }
+    } catch (e) {}
+
+    let braceCount = 0;
+    let currentStart = -1;
+
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '{') {
+            if (braceCount === 0) currentStart = i;
+            braceCount++;
+        } else if (text[i] === '}') {
+            if (braceCount > 0) {
+                braceCount--;
+                if (braceCount === 0 && currentStart !== -1) {
+                    const candidate = text.substring(currentStart, i + 1);
+                    try {
+                        const parsed = JSON.parse(candidate);
+                        if (parsed && typeof parsed === 'object' && parsed.name && parsed.args) {
+                            return parsed;
+                        }
+                    } catch (e) {
+                        i = currentStart;
+                    }
+                    braceCount = 0;
+                    currentStart = -1;
+                }
+            }
+        }
+    }
+    
+    return null;
+};
+
 const historyPath = path.resolve(__dirname, 'history.json');
 const instructionPath = path.resolve(__dirname, 'instruction.txt');
 const memoryPath = path.resolve(__dirname, 'memory.jsonl');
@@ -192,11 +232,9 @@ class SubAgent {
                     for await (const part of chunkGenerator) {
                         if (part.done) {
                             let functionCall = part.functionCall;
-                            if (part.text && !functionCall) {
-                                try {
-                                    const parsed = JSON.parse(part.text);
-                                    if (parsed && parsed.name && parsed.args) functionCall = parsed;
-                                } catch (e) {}
+                            const textToParse = part.text || part.thought;
+                            if (textToParse && !functionCall) {
+                                functionCall = tryExtractFunctionCall(textToParse);
                             }
 
                             if (functionCall) {
@@ -231,8 +269,8 @@ class SubAgent {
                                         parts: [{ text: `TOOL_ERROR [${functionCall.name}]: ${err.message}` }] 
                                     });
                                 }
-                            } else if (part.text) {
-                                this.history.push({ role: 'model', parts: [{ text: part.text }] });
+                            } else if (part.text || part.thought) {
+                                this.history.push({ role: 'model', parts: [{ text: part.text || part.thought }] });
                                 this.history.push({ role: 'user', parts: [{ text: "Please use function calling to perform actions or finish the task with agent.done." }] });
                             }
                         }
@@ -393,6 +431,14 @@ const processEvents = async () => {
 To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
 Use \`agent.addMemory\`, \`updateMemory\`, or \`deleteMemory\` to store/curate key facts. If at 20, delete or replace low-value memories. Priority: user identity, core goals, and critical long-term context.
 
+### TOOL DISCOVERY & EXECUTION PROTOCOL
+When given a goal or task:
+1. Discover compatible apps and tools. Start by listing the registered apps using \`tools.listApps\`, then check details of specific apps using \`tools.listAppTools\` (passing the app name). You can also search for relevant tools using \`tools.search\` or \`tools.strict-search\`.
+2. Evaluate and select the function to call:
+   - If a tool fits, call it.
+   - If the tool is not a perfect fit, fails, or is missing from your function list, search other apps/functions dynamically to find a compatible alternative.
+3. Continue this search loop until you find and execute the correct tool for the job.
+
 ### MEMORY STORAGE (MAX 20)
 ${memoryContext}`;
 
@@ -466,23 +512,19 @@ ${memoryContext}`;
                     // Check if text contains JSON-formatted function call
                     let functionCallToExecute = part.functionCall;
                     
-                    if (part.text && !functionCallToExecute) {
-                        try {
-                            const parsed = JSON.parse(part.text);
-                            if (parsed && parsed.name && parsed.args) {
-                                functionCallToExecute = parsed;
-                                console.log('🤖 Parsed JSON function call from text');
-                            }
-                        } catch (e) {
-                            // Not JSON or not a function call, treat as regular text
+                    const textToParse = part.text || part.thought;
+                    if (textToParse && !functionCallToExecute) {
+                        functionCallToExecute = tryExtractFunctionCall(textToParse);
+                        if (functionCallToExecute) {
+                            console.log('🤖 Parsed JSON function call from text/thought');
                         }
                     }
 
-                    if (part.text && !functionCallToExecute) {
+                    if (textToParse && !functionCallToExecute) {
                         pendingEvents.push({
                             eventName: 'warning',
                             from: 'agent',
-                            message: `LLM output was not a function call: ${part.text}. Please use function calling.`
+                            message: `LLM output was not a function call: ${textToParse}. Please use function calling.`
                         });
                         if (debounceTimer) clearTimeout(debounceTimer);
                         debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);

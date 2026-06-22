@@ -62,6 +62,7 @@ class GeminiProvider extends BaseProvider {
 
         const maxRetries = this.apiKeys.length * this.models.length;
         let lastError = null;
+        let hasYieldedAny = false;
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             if (signal?.aborted) throw new Error('canceled');
@@ -197,52 +198,8 @@ class GeminiProvider extends BaseProvider {
                                         parts.push({ type: 'thought', data: { thought: part.text }, done: isStreamEnding });
                                         if(debug)process.stdout.write(part.text);
                                     } else if (part.text) {
-                                        // Try to parse JSON function calls from text
-                                        // Handle case where multiple JSON objects are concatenated
-                                        const text = part.text;
-                                        const jsonMatches = [];
-                                        let braceCount = 0;
-                                        let currentStart = -1;
-
-                                        for (let i = 0; i < text.length; i++) {
-                                            if (text[i] === '{') {
-                                                if (braceCount === 0) currentStart = i;
-                                                braceCount++;
-                                            } else if (text[i] === '}') {
-                                                braceCount--;
-                                                if (braceCount === 0 && currentStart !== -1) {
-                                                    jsonMatches.push(text.substring(currentStart, i + 1));
-                                                    currentStart = -1;
-                                                }
-                                            }
-                                        }
-
-                                        // If we found JSON objects, try to parse them as function calls
-                                        if (jsonMatches.length > 0) {
-                                            for (const jsonStr of jsonMatches) {
-                                                try {
-                                                    const parsed = JSON.parse(jsonStr);
-                                                    if (parsed.name && parsed.args) {
-                                                        // This is a function call
-                                                        parts.push({ 
-                                                            type: 'functionCall', 
-                                                            data: { functionCall: { name: parsed.name, args: parsed.args } }, 
-                                                            done: isStreamEnding 
-                                                        });
-                                                    } else {
-                                                        // Just regular JSON text
-                                                        parts.push({ type: 'text', data: { text: jsonStr }, done: isStreamEnding });
-                                                    }
-                                                } catch (e) {
-                                                    // Not valid JSON, treat as text
-                                                    parts.push({ type: 'text', data: { text: jsonStr }, done: isStreamEnding });
-                                                }
-                                            }
-                                        } else {
-                                            // No JSON found, just regular text
-                                            parts.push({ type: 'text', data: { text: text }, done: isStreamEnding });
-                                            if(debug)process.stdout.write(text);
-                                        }
+                                        parts.push({ type: 'text', data: { text: part.text }, done: isStreamEnding });
+                                        if (debug) process.stdout.write(part.text);
                                     } else if (part.inlineData) {
                                         parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
                                     } else if (part.functionCall) {
@@ -292,6 +249,10 @@ class GeminiProvider extends BaseProvider {
                     if (currentQueue.length === 0) {
                         // Wait for more data or end of stream
                         await new Promise(r => resolveNext = r);
+                        if (processingError) {
+                            console.error(`[GeminiProvider] 🛑 Breaking yield loop due to processing error`);
+                            throw processingError;
+                        }
                         if (streamEnded && currentQueue.length === 0) break;
                     }
 
@@ -356,13 +317,22 @@ class GeminiProvider extends BaseProvider {
                             const isFinished = (partType === 'functionCall') || (!hasMoreOfSameType && streamEnded);
 
                             if(isFinished) {
+                                hasYieldedAny = true;
                                 yield { ...accumulated, done: true };
                                 break;
-                            } else yield { ...currentPart.data, done: false };
+                            } else {
+                                hasYieldedAny = true;
+                                yield { ...currentPart.data, done: false };
+                            }
                         }
                         
                         return accumulated;
                     })(this);
+                }
+
+                if (processingError) {
+                    console.error(`[GeminiProvider] 🛑 Throwing processing error after loop`);
+                    throw processingError;
                 }
 
                 console.log(`[GeminiProvider] ✅ Generation sequence complete`);
@@ -371,6 +341,11 @@ class GeminiProvider extends BaseProvider {
             } catch (e) {
                 console.error(`[GeminiProvider] ❌ Error on attempt ${attempt + 1}:`, e.message);
                 lastError = e;
+                
+                if (hasYieldedAny) {
+                    throw e;
+                }
+
                 const isRetryable = e.message.includes('429') || 
                                   e.message.includes('RESOURCE_EXHAUSTED') || 
                                   e.message.includes('500') ||

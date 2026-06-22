@@ -5,7 +5,9 @@ node_modules/
 # Sockets
 *.sock
 apps/**/*.sock
-
+**/media/**
+**/root/**
+**/downloads/**
 # Configs & Logs
 .env
 *.log

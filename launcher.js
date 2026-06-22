@@ -320,19 +320,18 @@ const toggleApp = (app) => {
         // Start
         try {
             const logPath = path.join(app.path, 'app.log');
-            const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+            fs.appendFileSync(logPath, `\n--- App started by CLI launcher at ${new Date().toISOString()} ---\n`);
 
-            logStream.write(`\n--- App started by CLI launcher at ${new Date().toISOString()} ---\n`);
+            const outFd = fs.openSync(logPath, 'a');
 
             const child = spawn('node', ['index.js'], {
                 cwd: app.path,
-                stdio: ['ignore', 'pipe', 'pipe'],
+                stdio: ['ignore', outFd, outFd],
                 env: { ...process.env },
                 detached: true
             });
 
-            child.stdout.pipe(logStream);
-            child.stderr.pipe(logStream);
+            fs.closeSync(outFd);
 
             app.process = child;
             app.running = true;
@@ -342,7 +341,7 @@ const toggleApp = (app) => {
             fs.writeFileSync(pidPath, child.pid.toString(), 'utf8');
 
             child.on('error', (err) => {
-                logStream.write(`Spawn error: ${err.message}\n`);
+                fs.appendFileSync(logPath, `Spawn error: ${err.message}\n`);
                 app.running = false;
                 app.pid = null;
                 app.process = null;
@@ -353,7 +352,7 @@ const toggleApp = (app) => {
             });
 
             child.on('exit', (code, signal) => {
-                logStream.write(`App exited with code ${code} and signal ${signal}\n`);
+                fs.appendFileSync(logPath, `App exited with code ${code} and signal ${signal}\n`);
                 app.running = false;
                 app.pid = null;
                 app.process = null;
@@ -506,23 +505,23 @@ const startAppSilent = (app) => {
     const socketPath = path.join(app.path, `${app.name}.sock`);
     try {
         const logPath = path.join(app.path, 'app.log');
-        const logStream = fs.createWriteStream(logPath, { flags: 'a' });
-        logStream.write(`\n--- App auto-restarted by daemon at ${new Date().toISOString()} ---\n`);
+        fs.appendFileSync(logPath, `\n--- App auto-restarted by daemon at ${new Date().toISOString()} ---\n`);
+
+        const outFd = fs.openSync(logPath, 'a');
 
         const child = spawn('node', ['index.js'], {
             cwd: app.path,
-            stdio: ['ignore', 'pipe', 'pipe'],
+            stdio: ['ignore', outFd, outFd],
             env: { ...process.env },
             detached: true
         });
 
-        child.stdout.pipe(logStream);
-        child.stderr.pipe(logStream);
+        fs.closeSync(outFd);
         
         fs.writeFileSync(pidPath, child.pid.toString(), 'utf8');
 
         child.on('exit', (code, signal) => {
-            logStream.write(`App exited with code ${code} and signal ${signal}\n`);
+            fs.appendFileSync(logPath, `App exited with code ${code} and signal ${signal}\n`);
             if (fs.existsSync(pidPath)) {
                 try {
                     const currentPid = parseInt(fs.readFileSync(pidPath, 'utf8'), 10);
