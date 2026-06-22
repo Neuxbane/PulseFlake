@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-
+*.pid
+*.txt
 # Sockets
 *.sock
 apps/**/*.sock

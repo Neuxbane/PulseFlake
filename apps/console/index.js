@@ -167,15 +167,32 @@ app.get('/api/calendar/events', async (req, res) => {
 });
 
 app.post('/api/execute', async (req, res) => {
-    const { socketPath, toolName, arguments: args } = req.body;
+    let { socketPath, toolName, arguments: args } = req.body;
     try {
-        if (fs.existsSync(socketPath)) {
-            await server.connect(socketPath);
+        let identifier = socketPath;
+        let connectPath = socketPath;
+
+        // If it doesn't exist directly on disk, check if it's an app name in the apps directory
+        if (!fs.existsSync(connectPath)) {
+            const resolvedPath = path.resolve(__dirname, '..', socketPath, `${socketPath}.sock`);
+            if (fs.existsSync(resolvedPath)) {
+                connectPath = resolvedPath;
+                identifier = socketPath;
+            }
+        } else {
+            // It is a file path, extract the base name as the identifier (e.g., /path/to/calendar.sock -> calendar)
+            const parsed = path.parse(socketPath);
+            identifier = parsed.name; // "calendar.sock" -> "calendar"
         }
-        const result = await server.request(socketPath, toolName, args);
+
+        if (fs.existsSync(connectPath)) {
+            await server.connect(connectPath);
+        }
+        
+        const result = await server.request(identifier, toolName, args);
         
         // Push update if calendar was changed
-        if (socketPath.includes('calendar')) {
+        if (identifier === 'calendar') {
             const items = await server.request('calendar', 'listEvents');
             io.emit('calendar_events', items);
         }

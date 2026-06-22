@@ -449,6 +449,11 @@ const calendarTools = [
                 hoursAhead: { type: 'number', description: 'Look ahead this many hours (default 24)' }
             }
         }
+    },
+    {
+        name: 'render',
+        description: 'Returns the UI assets (HTML, CSS, JS, scripts, stylesheets) to render the Calendar interface.',
+        parameters: { type: 'object', properties: {} }
     }
 ];
 
@@ -731,6 +736,30 @@ server.listen('*', 'getUpcomingReminders', (req, res) => {
     upcomingReminders.sort((a, b) => new Date(a.reminderTime) - new Date(b.reminderTime));
     
     res.send(upcomingReminders);
+});
+
+server.listen('*', 'render', (req, res) => {
+    try {
+        const html = fs.readFileSync(path.resolve(__dirname, 'ui/index.html'), 'utf8');
+        const js = fs.readFileSync(path.resolve(__dirname, 'ui/script.js'), 'utf8');
+        const css = fs.readFileSync(path.resolve(__dirname, 'ui/style.css'), 'utf8');
+        res.send({
+            success: true,
+            html,
+            js,
+            css,
+            scripts: [
+                "https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"
+            ],
+            stylesheets: []
+        });
+    } catch (e) {
+        console.error('[calendar] Error reading UI files for render:', e.message);
+        res.send({
+            success: false,
+            error: e.message
+        });
+    }
 });
 
 // --- CONNECT ---

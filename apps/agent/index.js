@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
-const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview","gemma-4-31b-it","gemma-4-26b-a4b-it"];
+const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemma-4-31b-it"];
 
 const provider = new GeminiProvider({ apiKeys, models });
 
@@ -82,6 +82,71 @@ const loadHistory = () => {
     }
 }
 
+const truncateHistory = (history) => {
+    const RAM_LIMIT = 50;
+    const ANCHOR_TURN_LIMIT = 10; // 10 turns = 20 messages
+
+    if (!history || history.length === 0) return [];
+
+    // If history fits in RAM, just use it raw
+    if (history.length <= RAM_LIMIT) {
+        let updatedHistory = [...history];
+        while (updatedHistory.length > 1 && updatedHistory[0].role !== 'user') {
+            updatedHistory.shift();
+        }
+        return updatedHistory;
+    }
+
+    // 1. RAM: Keep the last 50 messages raw
+    const ram = history.slice(-RAM_LIMIT);
+
+    // 2. Anchor: Compress the preceding history into Turns
+    const anchorCandidates = history.slice(0, history.length - RAM_LIMIT);
+    const turns = [];
+    let currentTurn = null;
+
+    for (const msg of anchorCandidates) {
+        if (msg.role === 'user') {
+            // If we have a finished turn, push it to the list
+            if (currentTurn) {
+                turns.push(currentTurn);
+            }
+            // Start a new turn
+            currentTurn = {
+                user: msg,
+                model: null
+            };
+        } else if ((msg.role === 'model' || msg.role === 'assistant') && currentTurn) {
+            // Keep updating the model/assistant part of the turn to ensure we have the FINAL response
+            currentTurn.model = msg;
+        }
+    }
+    // Push the last turn if it exists
+    if (currentTurn) {
+        turns.push(currentTurn);
+    }
+
+    // Take the 10 most recent turns
+    const recentTurns = turns.slice(-ANCHOR_TURN_LIMIT);
+    const compressedAnchor = [];
+    for (const turn of recentTurns) {
+        compressedAnchor.push(turn.user);
+        if (turn.model) {
+            compressedAnchor.push(turn.model);
+        }
+    }
+
+    // 3. Merge Anchor + RAM
+    let updatedHistory = [...compressedAnchor, ...ram];
+
+    // 4. API Alignment: Ensure it starts with a 'user' role
+    while (updatedHistory.length > 1 && updatedHistory[0].role !== 'user') {
+        updatedHistory.shift();
+    }
+
+    return updatedHistory;
+};
+
 class SubAgent {
     constructor(id, parentId, instruction, goal, toolsForAI, parentResolve) {
         this.id = id;
@@ -102,7 +167,7 @@ class SubAgent {
             try {
                 const systemInstruction = `${this.instruction}\n\n### SUB-AGENT GOAL\n${this.goal}\n\nYou are a sub-agent. When your task is complete or you have a final report, use \`agent.done\` to finish and report back to your parent.`;
                 
-                const stream = provider.generate(this.history, {
+                const stream = provider.generate(truncateHistory(this.history), {
                     systemInstruction,
                     thinkingConfig: { include_thoughts: true },
                     tools: [
@@ -310,7 +375,7 @@ const processEvents = async () => {
         chatHistory.push({ role: 'user', parts: combinedContent });
         saveHistory();
 
-        let messages = chatHistory.slice(-101);
+        let messages = truncateHistory(chatHistory);
 
         // Fetch memories and inject into context (as pseudo-history/system setup)
         const currentMemories = getMemories();

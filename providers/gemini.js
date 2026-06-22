@@ -10,7 +10,7 @@ class GeminiProvider extends BaseProvider {
     constructor(config = {}) {
         super(config);
         this.apiKeys = config.apiKeys || [];
-        this.models = config.models || ["gemini-3.1-flash-lite-preview", "gemma-4-31b-it"];
+        this.models = config.models || ["gemma-4-31b-it"];
         this.currentApiKeyIndex = 0;
         this.currentModelIndex = 0;
         this.lastCallTime = 0;
@@ -181,20 +181,21 @@ class GeminiProvider extends BaseProvider {
 
                         for await (const chunk of response) {
                             // print chunck
-                            console.log(`[GeminiProvider] Received chunk:`, JSON.stringify(chunk));
+                            // console.log(`[GeminiProvider] Received chunk:`, JSON.stringify(chunk));
                             if (signal?.aborted) break;
 
                             const parts = [];
                             
                             // Check if this chunk indicates the stream is finishing
                             const isStreamEnding = chunk.candidates?.[0]?.finishReason === 'STOP';
-                            
+                            const debug=true;
                             // Native extraction as per @google/genai documentation
                             const contentCandidate = chunk.candidates?.[0]?.content;
                             if (contentCandidate && contentCandidate.parts) {
                                 for (const part of contentCandidate.parts) {
                                     if (part.thought) {
                                         parts.push({ type: 'thought', data: { thought: part.text }, done: isStreamEnding });
+                                        if(debug)process.stdout.write(part.text);
                                     } else if (part.text) {
                                         // Try to parse JSON function calls from text
                                         // Handle case where multiple JSON objects are concatenated
@@ -240,11 +241,13 @@ class GeminiProvider extends BaseProvider {
                                         } else {
                                             // No JSON found, just regular text
                                             parts.push({ type: 'text', data: { text: text }, done: isStreamEnding });
+                                            if(debug)process.stdout.write(text);
                                         }
                                     } else if (part.inlineData) {
                                         parts.push({ type: 'image', data: { inlineData: part.inlineData }, done: isStreamEnding });
                                     } else if (part.functionCall) {
                                         parts.push({ type: 'functionCall', data: { functionCall: part.functionCall }, done: isStreamEnding });
+                                        if(debug)process.stdout.write("\n\n"+part.functionCall);
                                     }
                                 }
                             }

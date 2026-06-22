@@ -49,10 +49,32 @@ server.listen('*', 'built-in', async(req, res) => {
     res.send(tools['tools'].map(t => ({ ...t, name: `tools.${t.name}` })));
 });
 
+server.listen('*', 'listApps', async (req, res) => {
+    res.send(Object.keys(tools));
+});
+
+server.listen('*', 'listAppTools', async (req, res) => {
+    const appName = req.data?.app || req.data?.identifier || req.data;
+    if (!appName || typeof appName !== 'string') {
+        return res.send({ success: false, error: 'app name is required' });
+    }
+    const list = tools[appName] || [];
+    res.send(list.map(t => ({
+        ...t,
+        fullName: `${appName}.${t.name}`,
+        identifier: appName
+    })));
+});
+
 server.listen('*', 'search', async(req, res) => {
     try {
-        const queryEmbedding = await provider.embed([{text: req.data}]);
-        const results = Object.entries(toolEmbeddings).map(([fullToolName, embedding]) => {
+        const query = req.data?.query || (typeof req.data === 'string' ? req.data : '');
+        const appFilter = req.data?.app;
+        if (!query) {
+            return res.send([]);
+        }
+        const queryEmbedding = await provider.embed([{text: query}]);
+        let results = Object.entries(toolEmbeddings).map(([fullToolName, embedding]) => {
             const similarity = cosineSimilarity(queryEmbedding, embedding);
             const [identifier, name] = fullToolName.split('.');
             const definition = tools[identifier]?.find(t => t.name === name);
@@ -64,8 +86,13 @@ server.listen('*', 'search', async(req, res) => {
                 definition,
                 searchMethod: 'rag'
             };
-        }).sort((a, b) => b.similarity - a.similarity).slice(0, 20);
-        res.send(results);
+        });
+
+        if (appFilter) {
+            results = results.filter(r => r.identifier === appFilter);
+        }
+
+        res.send(results.sort((a, b) => b.similarity - a.similarity).slice(0, 20));
     } catch (err) {
         console.error(`[tools] Search (RAG) error:`, err.message);
         res.send([]);
@@ -75,7 +102,12 @@ server.listen('*', 'search', async(req, res) => {
 // Contain rules based search - keyword matching
 server.listen('*', 'strict-search', async(req, res) => {
     try {
-        const query = typeof req.data === 'string' ? req.data : JSON.stringify(req.data);
+        const query = req.data?.query || (typeof req.data === 'string' ? req.data : '');
+        const appFilter = req.data?.app;
+        if (!query) {
+            return res.send([]);
+        }
+        
         // Extract keywords (split by space, remove special chars, lowercase)
         const keywords = query.toLowerCase()
             .split(/\s+/)
@@ -85,6 +117,8 @@ server.listen('*', 'strict-search', async(req, res) => {
         const results = [];
         
         for (const [identifier, toolList] of Object.entries(tools)) {
+            if (appFilter && identifier !== appFilter) continue;
+
             for (const definition of toolList) {
                 const fullToolName = `${identifier}.${definition.name}`;
                 
@@ -179,23 +213,44 @@ server.start().then(() => {
             }
         },
         {
-            name: 'search',
-            description: 'Search for tools relevant to a query using RAG/embedding similarity',
+            name: 'listApps',
+            description: 'List all registered app names/services in the ecosystem.',
+            parameters: {
+                type: 'object',
+                properties: {}
+            }
+        },
+        {
+            name: 'listAppTools',
+            description: 'List all registered tools for a specific app name.',
             parameters: {
                 type: 'object',
                 properties: {
-                    query: { type: 'string', description: 'Search query' }
+                    app: { type: 'string', description: 'The exact name/identifier of the app (e.g. "calendar", "whatsapp", "tools")' }
+                },
+                required: ['app']
+            }
+        },
+        {
+            name: 'search',
+            description: 'Search for tools relevant to a query using RAG/embedding similarity. Optionally filter by a specific app.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query' },
+                    app: { type: 'string', description: 'Optional name of the app to restrict search to' }
                 },
                 required: ['query']
             }
         },
         {
             name: 'strict-search',
-            description: 'Search for tools relevant to a query using keyword contain rules matching',
+            description: 'Search for tools relevant to a query using keyword matching. Optionally filter by a specific app.',
             parameters: {
                 type: 'object',
                 properties: {
-                    query: { type: 'string', description: 'Search query with keywords' }
+                    query: { type: 'string', description: 'Search query with keywords' },
+                    app: { type: 'string', description: 'Optional name of the app to restrict search to' }
                 },
                 required: ['query']
             }

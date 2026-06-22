@@ -4,655 +4,193 @@ let servicesData = {};
 let calendar = null;
 let calendarData = { items: [] }; // Store raw calendar data for duplication
 
-// --- REPEAT RULE HELPERS ---
-const dateToObj = (date) => {
-    return {
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
-        date: date.getDate(),
-        day: date.getDay()
-    };
-};
+let currentDynamicApp = null;
 
-const evaluateRepeatRule = (rule, curr, evnt) => {
-    if (!rule) return false;
-    
-    try {
-        if (rule === 'daily') {
-            return true;
-        } else if (rule === 'weekly') {
-            return curr.day === evnt.day;
-        } else if (rule === 'workdays') {
-            return curr.day >= 1 && curr.day <= 5;
-        } else if (rule === 'weekend') {
-            return curr.day === 0 || curr.day === 6;
-        } else if (rule === 'monthly') {
-            return curr.date === evnt.date;
-        } else if (rule === 'yearly') {
-            return curr.month === evnt.month && curr.date === evnt.date;
-        } else if (typeof rule === 'string' && rule.includes('=>')) {
-            const evalFunc = new Function('curr', 'evnt', `return (${rule})(curr, evnt)`);
-            return evalFunc(curr, evnt);
+// Dynamically load scripts sequentially
+async function loadScripts(urls) {
+    for (const url of urls) {
+        if (document.querySelector(`script[src="${url}"]`)) {
+            continue;
         }
-    } catch (e) {
-        console.error(`[calendar-ui] Error evaluating rule:`, e.message);
-        return false;
-    }
-    
-    return false;
-};
-
-const expandEventOccurrences = (event, fromDate = null, daysAhead = 730) => {
-    const occurrences = [];
-    const startDate = new Date(event.start);
-    
-    if (!fromDate) {
-        fromDate = startDate;
-    }
-    
-    const duration = event.duration || 0;
-    const isAllDay = duration === 0;
-    const evnt = dateToObj(startDate);
-    
-    // Non-recurring: just return single occurrence
-    if (!event.repeat) {
-        const endDate = isAllDay
-            ? new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 23, 59, 59)
-            : new Date(startDate.getTime() + duration * 60000);
-        return [{
-            ...event,
-            allDay: isAllDay,
-            occurrenceStart: startDate.toISOString(),
-            occurrenceEnd: endDate.toISOString()
-        }];
-    }
-    
-    // Recurring: generate instances
-    let currentDate = new Date(fromDate);
-    const endLimit = new Date(fromDate.getTime() + daysAhead * 86400000);
-    
-    for (let i = 0; i < daysAhead; i++) {
-        if (currentDate > endLimit) break;
-        
-        const curr = dateToObj(currentDate);
-        
-        if (evaluateRepeatRule(event.repeat, curr, evnt)) {
-            const pad = (n) => String(n).padStart(2, '0');
-            const timeStr = event.start.split('T')[1]; // Extract HH:MM:SS
-            const occStart = `${pad(currentDate.getFullYear())}-${pad(currentDate.getMonth() + 1)}-${pad(currentDate.getDate())}T${timeStr}`;
-            const occStartDate = new Date(occStart);
-            const occEndDate = isAllDay
-                ? new Date(occStartDate.getFullYear(), occStartDate.getMonth(), occStartDate.getDate(), 23, 59, 59)
-                : new Date(occStartDate.getTime() + duration * 60000);
-            
-            occurrences.push({
-                ...event,
-                allDay: isAllDay,
-                id: `${event.id}_${i}`,
-                occurrenceStart: occStartDate.toISOString(),
-                occurrenceEnd: occEndDate.toISOString()
-            });
-        }
-        
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    return occurrences;
-};
-
-// --- TIMEZONE HELPERS ---
-
-// --- CALENDAR HELPERS ---
-function toggleAllDayUI() {
-    const isAllDay = document.getElementById('event-all-day').checked;
-    const durationInput = document.getElementById('event-duration');
-    if (isAllDay) {
-        durationInput.value = '0';
-        durationInput.disabled = true;
-    } else {
-        durationInput.disabled = false;
-        if (durationInput.value === '0') {
-            durationInput.value = '60';
-        }
+        await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
     }
 }
 
-function updateRepeatFunction(presetValue) {
-    const repeatInput = document.getElementById('event-repeat');
-    const presetMap = {
-        '': '',
-        'daily': '(curr, evnt) => true',
-        'weekly': '(curr, evnt) => curr.day == evnt.day',
-        'workdays': '(curr, evnt) => curr.day >= 1 && curr.day <= 5',
-        'weekend': '(curr, evnt) => curr.day === 0 || curr.day === 6',
-        'custom': ''
-    };
-    
-    repeatInput.value = presetMap[presetValue] || '';
-    
-    // If custom, let the user type their own
-    if (presetValue === 'custom') {
-        repeatInput.focus();
+// Dynamically load stylesheets
+async function loadStylesheets(urls) {
+    for (const url of urls) {
+        if (document.querySelector(`link[href="${url}"]`)) {
+            continue;
+        }
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        document.head.appendChild(link);
     }
 }
 
-function formatLocalDateTime(date) {
-    // Format a Date object as YYYY-MM-DDTHH:MM in the user's LOCAL timezone
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+// Request and render a dynamic app
+async function loadDynamicApp(appName) {
+    if (currentDynamicApp === appName) {
+        if (window.PulseFlakeApps && window.PulseFlakeApps[appName]) {
+            window.PulseFlakeApps[appName].init();
+        }
+        return;
+    }
+
+    if (currentDynamicApp && window.PulseFlakeApps && window.PulseFlakeApps[currentDynamicApp]) {
+        try {
+            window.PulseFlakeApps[currentDynamicApp].destroy();
+        } catch (e) {
+            console.error(`Error destroying app ${currentDynamicApp}:`, e);
+        }
+    }
+
+    document.querySelectorAll('.dynamic-app-resource').forEach(el => el.remove());
+
+    const container = document.getElementById('page-dynamic-app');
+    container.innerHTML = `<div class="flex-1 flex items-center justify-center text-pink-500 font-bold uppercase tracking-widest animate-pulse">Loading ${appName}...</div>`;
+
+    socket.emit('execute_tool', { socketPath: appName, toolName: 'render', arguments: {} }, async (response) => {
+        if (!response || !response.success) {
+            container.innerHTML = `<div class="flex-1 flex flex-col items-center justify-center text-red-500 font-bold">
+                <span class="uppercase tracking-widest mb-2">Failed to load ${appName}</span>
+                <span class="text-xs text-gray-500 font-mono">${response?.error || 'No response from app'}</span>
+            </div>`;
+            return;
+        }
+
+        const { html, js, css, scripts = [], stylesheets = [] } = response;
+
+        try {
+            await loadStylesheets(stylesheets);
+            await loadScripts(scripts);
+
+            container.innerHTML = html;
+
+            if (css) {
+                const styleEl = document.createElement('style');
+                styleEl.className = 'dynamic-app-resource';
+                styleEl.textContent = css;
+                document.head.appendChild(styleEl);
+            }
+
+            if (js) {
+                const scriptEl = document.createElement('script');
+                scriptEl.className = 'dynamic-app-resource';
+                scriptEl.textContent = js;
+                document.body.appendChild(scriptEl);
+            }
+
+            currentDynamicApp = appName;
+            if (window.PulseFlakeApps && window.PulseFlakeApps[appName]) {
+                window.PulseFlakeApps[appName].init();
+            } else {
+                console.warn(`App ${appName} loaded but did not register under window.PulseFlakeApps.${appName}`);
+            }
+        } catch (err) {
+            console.error(`Error initializing dynamic app ${appName}:`, err);
+            container.innerHTML = `<div class="flex-1 flex flex-col items-center justify-center text-red-500 font-bold">
+                <span class="uppercase tracking-widest mb-2">Error running ${appName}</span>
+                <span class="text-xs text-gray-500 font-mono">${err.message}</span>
+            </div>`;
+        }
+    });
 }
 
-function getLocalTimezoneInfo() {
-    const now = new Date();
-    const offset = -now.getTimezoneOffset();
-    const hours = Math.floor(offset / 60);
-    const mins = offset % 60;
-    const sign = offset >= 0 ? '+' : '-';
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return { tz, offset, hours: Math.abs(hours), mins: Math.abs(mins), sign };
+function updateDynamicAppsNav() {
+    const nav = document.getElementById('dynamic-apps-nav');
+    if (!nav) return;
+    
+    const appsWithRender = [];
+    Object.entries(servicesData).forEach(([appPath, tools]) => {
+        const appName = appPath.split('/').pop().replace('.sock', '');
+        const hasRender = tools.some(t => t.name === 'render');
+        if (hasRender && !appsWithRender.includes(appName)) {
+            appsWithRender.push(appName);
+        }
+    });
+
+    nav.innerHTML = '';
+    appsWithRender.forEach(appName => {
+        const btn = document.createElement('button');
+        btn.id = `nav-${appName}`;
+        btn.onclick = () => showPage(appName);
+        btn.className = "p-3 rounded-xl transition-all duration-300 text-gray-500 hover:bg-gray-800 hover:text-gray-300";
+        btn.title = appName.charAt(0).toUpperCase() + appName.slice(1);
+        
+        let iconHtml = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+        `;
+        if (appName.toLowerCase() === 'calendar') {
+            iconHtml = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            `;
+        }
+
+        btn.innerHTML = iconHtml;
+        nav.appendChild(btn);
+    });
+
+    const activePage = document.querySelector('main:not(.hidden)')?.id?.replace('page-', '');
+    if (activePage && appsWithRender.includes(activePage)) {
+        const btn = document.getElementById(`nav-${activePage}`);
+        if (btn) {
+            btn.className = "p-3 rounded-xl transition-all duration-300 bg-pink-600 text-white";
+        }
+    }
 }
 
 // Navigation
 function showPage(pageId) {
     document.querySelectorAll('main').forEach(p => p.classList.add('hidden'));
-    document.getElementById(`page-${pageId}`).classList.remove('hidden');
     
-    // Update Nav UI
     document.querySelectorAll('nav button').forEach(b => {
         b.classList.remove('bg-pink-600', 'text-white');
         b.classList.add('text-gray-500', 'hover:bg-gray-800');
     });
-    const activeBtn = document.getElementById(`nav-${pageId}`);
-    if (activeBtn) {
-        activeBtn.classList.remove('text-gray-500', 'hover:bg-gray-800');
-        activeBtn.classList.add('bg-pink-600', 'text-white');
-    }
 
-    if (pageId === 'calendar') {
-        initCalendar();
-        onCalendarPageOpened();
-    }
-}
-
-function initCalendar() {
-    const calendarEl = document.getElementById('calendar');
-    if (calendar) return; // Already initialized
-
-    calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        themeSystem: 'standard',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridYear,dayGridMonth,timeGridWeek,timeGridThreeDay,listWeek'
-        },
-        views: {
-            dayGridYear: {
-                buttonText: 'Year'
-            },
-            timeGridThreeDay: {
-                type: 'timeGrid',
-                duration: { days: 3 },
-                buttonText: '3 Day'
-            },
-            listWeek: {
-                buttonText: 'Timeline/List'
-            }
-        },
-        height: '100%',
-        events: [],
-        editable: true,
-        eventDurationEditable: true,
-        eventResizableFromStart: true,
-        selectable: true,
-        selectConstraint: 'businessHours',
-        eventClick: function(info) {
-            // Ctrl/Cmd + Click to duplicate
-            if (info.jsEvent.ctrlKey || info.jsEvent.metaKey) {
-                duplicateEvent(info.event);
-                return;
-            }
-            openEditModal(info.event);
-        },
-        select: function(info) {
-            // Click and drag on empty slot to create new event
-            openCreateModalForSlot(info.start, info.end);
-        },
-        eventDrop: function(info) {
-            // Handle drag to new time
-            saveEventChanges(info.event, {
-                start: info.event.start
-            });
-        },
-        eventResize: function(info) {
-            // Handle resize
-            const duration = Math.round((info.event.end - info.event.start) / 60000);
-            saveEventChanges(info.event, {
-                duration: duration
-            });
-        },
-        nowIndicator: true,
-        slotLabelInterval: '00:30:00',
-        slotLabelFormat: {
-            meridiem: 'short',
-            hour: 'numeric',
-            minute: '2-digit'
-        },
-        scrollTime: '09:00:00'
-    });
-    calendar.render();
+    const isBuiltIn = ['chat', 'services'].includes(pageId);
     
-    // Start fetching events every 5 seconds for real-time updates
-    fetchAndUpdateEvents();
-    setInterval(fetchAndUpdateEvents, 5000);
-    
-    // Start updating the now indicator in real-time
-    updateNowIndicatorPosition();
-    setInterval(updateNowIndicatorPosition, 60000); // Update every minute
-}
-
-function updateNowIndicatorPosition() {
-    // FullCalendar's built-in nowIndicator should handle this
-    // But we can force a refresh by triggering slotLabelDidMount or similar
-    if (calendar) {
-        const view = calendar.view;
-        if (view && view.type && view.type.includes('timeGrid')) {
-            // Force re-render of now indicator
-            calendar.unselect();
+    if (isBuiltIn) {
+        if (currentDynamicApp && window.PulseFlakeApps && window.PulseFlakeApps[currentDynamicApp]) {
+            try {
+                window.PulseFlakeApps[currentDynamicApp].destroy();
+            } catch (e) {
+                console.error(`Error destroying app ${currentDynamicApp}:`, e);
+            }
+            currentDynamicApp = null;
         }
-    }
-}
-
-function fetchAndUpdateEvents() {
-    fetch('/api/calendar/events')
-        .then(res => res.json())
-        .then(events => {
-            calendarData.items = events; // Store raw data for duplication
-            updateCalendarEvents(events);
-        })
-        .catch(err => {
-            console.error('Error fetching calendar events:', err);
-        });
-}
-
-
-function onCalendarPageOpened() {
-    if (calendar) {
-        calendar.updateSize();
-        fetch('/api/calendar/events')
-            .then(res => res.json())
-            .then(events => {
-                socket.emit('calendar_events', events); // Still use socket internally to trigger the calendar_events listener or just call the logic
-                // But it's better to just update the events directly here or trigger the event handler
-                // Let's manually trigger the update logic
-                updateCalendarEvents(events);
-            });
-    }
-    
-    // Update timezone display
-    const tzInfo = getLocalTimezoneInfo();
-    const tzDisplay = document.getElementById('tz-display');
-    if (tzDisplay) {
-        tzDisplay.textContent = `[ ${tzInfo.tz} (UTC${tzInfo.sign}${String(tzInfo.hours).padStart(2, '0')}:${String(tzInfo.mins).padStart(2, '0')}) ]`;
-    }
-}
-
-function updateCalendarEvents(events) {
-    if (calendar) {
-        calendar.removeAllEvents();
-        let formattedEvents = [];
         
-        // Helper to generate a light color based on a seed string
-        const getSeededColor = (seed) => {
-            let hash = 0;
-            for (let i = 0; i < seed.length; i++) {
-                hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-            }
-            
-            // Generate HSL color: 
-            // Hue from hash (0-360)
-            // Saturation 60-80% (vibrant but not too much)
-            // Lightness 70-85% (pastel/light)
-            const h = Math.abs(hash % 360);
-            const s = 70 + (Math.abs(hash % 20)); 
-            const l = 75 + (Math.abs(hash % 10));
-            return `hsl(${h}, ${s}%, ${l}%)`;
-        };
-
-        // Iterate through each event and expand using repeat rule
-        events.forEach(ev => {
-            const occurrences = expandEventOccurrences(ev);
-            
-            // Sort tags to ensure consistent seeding regardless of tag order
-            const sortedTags = (ev.tags || []).slice().sort().join(',');
-            const eventColor = sortedTags ? getSeededColor(sortedTags) : '#ec4899'; // Default pink if no tags
-            
-            occurrences.forEach(occ => {
-                const base = {
-                    id: occ.id,
-                    title: occ.title,
-                    start: occ.occurrenceStart,
-                    allDay: occ.allDay || false,
-                    description: occ.description,
-                    backgroundColor: eventColor,
-                    borderColor: eventColor,
-                    textColor: '#111827', // Dark text for light backgrounds
-                    extendedProps: { ...ev }
-                };
-                
-                if (occ.occurrenceEnd) {
-                    base.end = occ.occurrenceEnd;
-                }
-                
-                formattedEvents.push(base);
-            });
-        });
-
-        calendar.addEventSource(formattedEvents);
-    }
-}
-
-// Calendar UI Handlers
-let editingEventId = null;
-
-function openCreateModal() {
-    editingEventId = null;
-    document.getElementById('modal-event').classList.remove('hidden');
-    document.getElementById('event-title').value = '';
-    document.getElementById('event-start').value = formatLocalDateTime(new Date());
-    document.getElementById('event-duration').value = '60';
-    document.getElementById('event-all-day').checked = false;
-    document.getElementById('event-duration').disabled = false;
-    document.getElementById('event-repeat').value = '';
-    document.getElementById('event-repeat-preset').value = '';
-    document.getElementById('event-desc').value = '';
-    document.getElementById('event-tags').value = '';
-    document.getElementById('event-parallelable').checked = false;
-    document.getElementById('event-important').checked = true;
-    document.getElementById('event-reminds').value = '';
-    document.getElementById('btn-save-event').innerText = 'SAVE EVENT';
-    if (document.getElementById('btn-delete-event')) {
-        document.getElementById('btn-delete-event').classList.add('hidden');
-    }
-}
-
-function openEditModal(event) {
-    const data = event.extendedProps;
-    // For recurring events, the ID has a suffix like _0, _1, etc.
-    // Extract the original event ID by removing the suffix
-    const eventId = event.id;
-    const originalId = eventId.includes('_') ? eventId.split('_')[0] : eventId;
-    editingEventId = originalId;
-    
-    document.getElementById('modal-event').classList.remove('hidden');
-    document.getElementById('event-title').value = event.title || '';
-    
-    // The stored format is YYYY-MM-DDTHH:MM:SS (local time)
-    // datetime-local input expects the same format
-    if (data.start) {
-        // Extract just the date-time part without timezone
-        const timeStr = data.start.split('+')[0].split('Z')[0];
-        document.getElementById('event-start').value = timeStr;
-    }
-    
-    document.getElementById('event-duration').value = data.duration || '60';
-    const isAllDay = data.duration === 0;
-    document.getElementById('event-all-day').checked = isAllDay;
-    document.getElementById('event-duration').disabled = isAllDay;
-    document.getElementById('event-repeat').value = data.repeat || '';
-    
-    // Sync preset dropdown
-    const repeatVal = data.repeat || '';
-    const presetSelect = document.getElementById('event-repeat-preset');
-    if (['daily', 'weekly', 'workdays', 'weekend', 'monthly', 'yearly', ''].includes(repeatVal)) {
-        presetSelect.value = repeatVal;
-    } else if (repeatVal.includes('=>')) {
-        presetSelect.value = 'custom';
+        document.getElementById(`page-${pageId}`).classList.remove('hidden');
+        
+        const activeBtn = document.getElementById(`nav-${pageId}`);
+        if (activeBtn) {
+            activeBtn.classList.remove('text-gray-500', 'hover:bg-gray-800');
+            activeBtn.classList.add('bg-pink-600', 'text-white');
+        }
     } else {
-        presetSelect.value = '';
-    }
-
-    document.getElementById('event-desc').value = data.description || '';
-    document.getElementById('event-tags').value = (data.tags || []).join(', ');
-    document.getElementById('event-parallelable').checked = data.parallelable !== false ? true : false;
-    document.getElementById('event-important').checked = data.important !== false ? true : false;
-    document.getElementById('event-reminds').value = (data.reminds || []).map(r => Math.floor(r / 60)).join(', ');
-    document.getElementById('btn-save-event').innerText = 'UPDATE EVENT';
-    if (document.getElementById('btn-delete-event')) {
-        document.getElementById('btn-delete-event').classList.remove('hidden');
-    }
-}
-
-function deleteCurrentEvent() {
-    if (!editingEventId) return;
-    if (!confirm('Are you sure you want to delete this event?')) return;
-
-    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
-
-    fetch('/api/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            socketPath: calendarPath, 
-            toolName: 'deleteEvent', 
-            arguments: { id: editingEventId } 
-        })
-    })
-    .then(res => res.json())
-    .then(res => {
-        if (res.success) {
-            closeEventModal();
-            onCalendarPageOpened(); // Refresh via HTTP
-            appendLog('Calendar', `Deleted event: ${editingEventId}`);
-        } else {
-            alert('Error: ' + (res.error || 'Failed to delete event'));
+        document.getElementById('page-dynamic-app').classList.remove('hidden');
+        
+        const activeBtn = document.getElementById(`nav-${pageId}`);
+        if (activeBtn) {
+            activeBtn.classList.remove('text-gray-500', 'hover:bg-gray-800');
+            activeBtn.classList.add('bg-pink-600', 'text-white');
         }
-    })
-    .catch(err => alert('Network error: ' + err.message));
-}
 
-function closeEventModal() {
-    document.getElementById('modal-event').classList.add('hidden');
-    editingEventId = null;
-}
-
-function commitEvent() {
-    const title = document.getElementById('event-title').value;
-    const startInput = document.getElementById('event-start').value;
-    // datetime-local format: YYYY-MM-DDTHH:MM
-    // Append :00 to make it YYYY-MM-DDTHH:MM:SS (local time, no timezone)
-    const start = startInput ? startInput + ':00' : '';
-    const isAllDay = document.getElementById('event-all-day').checked;
-    const duration = isAllDay ? 0 : (parseInt(document.getElementById('event-duration').value) || 60);
-    const repeat = document.getElementById('event-repeat').value;
-    const desc = document.getElementById('event-desc').value;
-    const tags = document.getElementById('event-tags').value.split(',').map(t => t.trim()).filter(t => t);
-    const parallelable = document.getElementById('event-parallelable').checked;
-    const important = document.getElementById('event-important').checked;
-    const remindsInput = document.getElementById('event-reminds').value;
-    const reminds = remindsInput 
-        ? remindsInput.split(',').map(r => parseInt(r.trim()) * 60).filter(r => !isNaN(r))
-        : [];
-
-    if (!title) return alert('Title is required');
-
-    const evData = {
-        title,
-        start,
-        duration,
-        repeat,
-        description: desc,
-        tags,
-        parallelable,
-        important,
-        reminds
-    };
-
-    const toolName = editingEventId ? 'updateEvent' : 'createEvent';
-    const toolArgs = editingEventId ? { id: editingEventId, updates: evData } : evData;
-
-    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
-    
-    fetch('/api/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            socketPath: calendarPath, 
-            toolName: toolName, 
-            arguments: toolArgs 
-        })
-    })
-    .then(res => res.json())
-    .then(res => {
-        if (res.success) {
-            closeEventModal();
-            onCalendarPageOpened(); // Refresh via HTTP
-            appendLog('Calendar', `${editingEventId ? 'Updated' : 'Created'} event: ${title}`);
-        } else {
-            let errorMsg = res.error || 'Failed to save event';
-            if (res.conflicts && res.conflicts.length > 0) {
-                errorMsg += '\n\nConflicts with:';
-                res.conflicts.forEach(c => {
-                    errorMsg += `\n- ${c.eventTitle} (important: ${c.isExistingImportant}, parallelable: ${c.isExistingParallelable})`;
-                });
-            }
-            alert('Error: ' + errorMsg);
-        }
-    })
-    .catch(err => alert('Network error: ' + err.message));
-}
-
-// NEW: Duplicate an event
-function duplicateEvent(event) {
-    const data = event.extendedProps;
-    const eventId = event.id;
-    const originalId = eventId.includes('_') ? eventId.split('_')[0] : eventId;
-    
-    // Find the original event data
-    const originalEvent = calendarData?.items?.find(e => e.id === originalId);
-    if (!originalEvent) {
-        alert('Could not find original event data');
-        return;
-    }
-
-    // Create a new event with the same properties but a new start time (next occurrence)
-    const newStartDate = new Date(event.start);
-    newStartDate.setDate(newStartDate.getDate() + 7); // Duplicate one week later by default
-    
-    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
-    
-    const duplicatedEvent = {
-        title: originalEvent.title,
-        start: formatLocalDateTime(newStartDate),
-        duration: originalEvent.duration || 60,
-        repeat: originalEvent.repeat || '',
-        description: originalEvent.description || '',
-        tags: originalEvent.tags || [],
-        parallelable: originalEvent.parallelable !== false,
-        important: originalEvent.important !== false,
-        reminds: originalEvent.reminds || []
-    };
-
-    fetch('/api/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            socketPath: calendarPath, 
-            toolName: 'createEvent', 
-            arguments: duplicatedEvent
-        })
-    })
-    .then(res => res.json())
-    .then(res => {
-        if (res.success) {
-            onCalendarPageOpened();
-            appendLog('Calendar', `Duplicated event: ${originalEvent.title}`);
-        } else {
-            alert('Error duplicating event: ' + (res.error || 'Unknown error'));
-        }
-    })
-    .catch(err => alert('Network error: ' + err.message));
-}
-
-// NEW: Open create modal with pre-filled slot time
-function openCreateModalForSlot(startDate, endDate) {
-    editingEventId = null;
-    document.getElementById('modal-event').classList.remove('hidden');
-    document.getElementById('event-title').value = '';
-    document.getElementById('event-title').focus();
-    
-    // Set start time to the selected slot
-    document.getElementById('event-start').value = formatLocalDateTime(startDate);
-    
-    // Calculate duration from slot
-    const durationMs = endDate - startDate;
-    const durationMins = Math.round(durationMs / 60000);
-    document.getElementById('event-duration').value = durationMins || 60;
-    
-    document.getElementById('event-all-day').checked = false;
-    document.getElementById('event-duration').disabled = false;
-    document.getElementById('event-repeat').value = '';
-    document.getElementById('event-repeat-preset').value = '';
-    document.getElementById('event-desc').value = '';
-    document.getElementById('event-tags').value = '';
-    document.getElementById('event-parallelable').checked = false;
-    document.getElementById('event-important').checked = true;
-    document.getElementById('event-reminds').value = '';
-    document.getElementById('btn-save-event').innerText = 'SAVE EVENT';
-    if (document.getElementById('btn-delete-event')) {
-        document.getElementById('btn-delete-event').classList.add('hidden');
+        loadDynamicApp(pageId);
     }
 }
-
-// NEW: Save event changes from drag/resize
-function saveEventChanges(event, updates) {
-    const eventId = event.id;
-    const originalId = eventId.includes('_') ? eventId.split('_')[0] : eventId;
-    
-    const calendarPath = Object.keys(servicesData).find(p => p.includes('calendar')) || '/root/experiment/FuckingLonely/apps/calendar/calendar.sock';
-    
-    // Convert start date to proper format
-    const updateData = {};
-    if (updates.start) {
-        const startDate = new Date(updates.start);
-        updateData.start = formatLocalDateTime(startDate);
-    }
-    if (updates.duration) {
-        updateData.duration = updates.duration;
-    }
-
-    fetch('/api/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            socketPath: calendarPath, 
-            toolName: 'updateEvent', 
-            arguments: { id: originalId, updates: updateData }
-        })
-    })
-    .then(res => res.json())
-    .then(res => {
-        if (!res.success) {
-            // Revert on error
-            onCalendarPageOpened();
-            appendLog('Calendar', `Error updating event: ${res.error || 'Unknown error'}`);
-        } else {
-            appendLog('Calendar', `Updated event: ${event.title}`);
-        }
-    })
-    .catch(err => {
-        onCalendarPageOpened();
-        appendLog('Calendar', `Network error updating event: ${err.message}`);
-    });
-}
-
-socket.on('calendar_events', (events) => {
-    updateCalendarEvents(events);
-});
 
 // Socket Events
 socket.on('connect', () => {
@@ -678,6 +216,7 @@ socket.on('services_update', (services) => {
 socket.on('tools_dump', (data) => {
     servicesData = data;
     if (activeService) renderTools(activeService);
+    updateDynamicAppsNav();
 });
 
 socket.on('chat_history', (history) => {

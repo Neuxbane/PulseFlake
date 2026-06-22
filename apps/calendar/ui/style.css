@@ -1,0 +1,185 @@
+/* FullCalendar Customization */
+.fc {
+    --fc-border-color: #1f2937; /* Gray 800 */
+    --fc-today-bg-color: rgba(219, 39, 119, 0.1); /* Pink 600 with opacity */
+    --fc-button-bg-color: #1f2937;
+    --fc-button-border-color: #374151;
+    --fc-button-hover-bg-color: #374151;
+    --fc-button-hover-border-color: #4b5563;
+    --fc-button-active-bg-color: #db2777; /* Pink 600 */
+    --fc-button-active-border-color: #db2777;
+    --fc-event-bg-color: #db2777;
+    --fc-event-border-color: #db2777;
+    --fc-page-bg-color: transparent;
+    border: none;
+}
+
+.fc .fc-toolbar-title {
+    font-size: 1rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #f3f4f6;
+}
+
+.fc .fc-button {
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    transition: all 0.2s;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active, 
+.fc .fc-button-primary:not(:disabled):active {
+    background-color: #db2777;
+    border-color: #db2777;
+}
+
+.fc .fc-button-group > .fc-button {
+    border-radius: 0.75rem;
+    margin: 0 2px;
+}
+
+.fc-theme-standard td, .fc-theme-standard th {
+    border: 1px solid #111827;
+}
+
+.fc-theme-standard .fc-scrollgrid {
+    border: 1px solid #1f2937;
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.fc .fc-col-header-cell-cushion {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #9ca3af;
+    padding: 10px 0;
+}
+
+.fc .fc-daygrid-day-number {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 8px;
+}
+
+.fc .fc-day-today .fc-daygrid-day-number {
+    color: #db2777;
+}
+
+.fc-event {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 0.7rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.fc-v-event {
+    background-color: #db2777;
+    border: 1px solid #9d174d;
+}
+
+.fc-h-event {
+    background-color: #db2777;
+    border: 1px solid #9d174d;
+}
+
+/* Timeline/List view specifics */
+.fc-list {
+    border: 1px solid #1f2937 !important;
+    border-radius: 1rem;
+    overflow: hidden;
+    background: transparent !important;
+}
+
+.fc-list-day-cushion {
+    background: #111827 !important;
+}
+
+.fc-list-event:hover td {
+    background: rgba(219, 39, 119, 0.05) !important;
+}
+
+/* Now Indicator - Current Time Line */
+.fc .fc-now-indicator {
+    background-color: #ef4444;
+    border-top: 2px solid #dc2626;
+    height: 0;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+.fc .fc-now-indicator-container {
+    position: relative;
+}
+
+/* Event Dragging and Resizing Styles */
+.fc-event.fc-event-draggable {
+    cursor: grab;
+}
+
+.fc-event.fc-event-draggable:active {
+    cursor: grabbing;
+}
+
+.fc-event-dragging {
+    opacity: 0.7;
+    box-shadow: 0 10px 25px rgba(219, 39, 119, 0.4);
+    z-index: 100;
+}
+
+.fc-event-resizing {
+    opacity: 0.8;
+    box-shadow: 0 10px 25px rgba(219, 39, 119, 0.3);
+}
+
+/* Resize handle appearing at corners */
+.fc-event.fc-event-resizable::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    background: rgba(219, 39, 119, 0.6);
+    cursor: se-resize;
+    border-radius: 0 0 4px;
+}
+
+.fc-event:hover {
+    box-shadow: 0 8px 16px rgba(219, 39, 119, 0.3);
+    transform: scale(1.02);
+}
+
+/* Selection highlight for time slots */
+.fc .fc-timegrid-slot.fc-col-highlight-container {
+    background-color: rgba(219, 39, 119, 0.08);
+}
+
+.fc .fc-daygrid-day.fc-day-other {
+    opacity: 0.3;
+}
+
+.fc-daygrid-day-frame {
+    min-height: 100px;
+}
+
+/* Make day cells more interactive */
+.fc-daygrid-day:hover {
+    background-color: rgba(219, 39, 119, 0.02);
+}
+
+.fc .fc-highlight {
+    background: rgba(219, 39, 119, 0.15);
+}
+
+.fc .fc-selecthelper-dragging > .fc-event {
+    opacity: 0.65;
+}
