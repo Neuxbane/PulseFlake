@@ -402,7 +402,6 @@ const processEvents = async (eventsToProcess) => {
     try {
         invalidateHistory();
         let toolCalls = [];
-        let toolResults = [];
         console.log(`🤖 Processing batch of ${eventsToProcess.length} events...`);
 
         try {
@@ -558,77 +557,78 @@ const processEvents = async (eventsToProcess) => {
                         if (functionCallToExecute) {
                             const fullName = functionCallToExecute.name;
                             console.log(`🤖 Function call detected: ${fullName}`);
+                            toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
+
                             const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
                             // Ensure args is always an object
                             const args = functionCallToExecute.args || {};
                             
                             console.log(`🤖 AI calling ${targetApp} -> ${toolName} with`, args);
 
-                            try {
-                                let toolRes;
-                                if (fullName === 'agent.spawnSubagent') {
-                                    toolRes = await handleSpawnSubagent(args, 'main');
-                                } else if (fullName === 'agent.addMemory') {
-                                    const memories = getMemories();
-                                    if (memories.length >= 20) {
-                                        toolRes = { success: false, message: 'Max memory limit reached (20). Please delete or update an existing memory.' };
+                            // Execute asynchronously in the background
+                            (async () => {
+                                try {
+                                    let toolRes;
+                                    if (fullName === 'agent.spawnSubagent') {
+                                        toolRes = await handleSpawnSubagent(args, 'main');
+                                    } else if (fullName === 'agent.addMemory') {
+                                        const memories = getMemories();
+                                        if (memories.length >= 20) {
+                                            toolRes = { success: false, message: 'Max memory limit reached (20). Please delete or update an existing memory.' };
+                                        } else {
+                                            memories.push({ content: args.content });
+                                            saveMemories(memories);
+                                            toolRes = { success: true, message: 'Memory added.' };
+                                        }
+                                    } else if (fullName === 'agent.deleteMemory') {
+                                        const memories = getMemories();
+                                        const idx = args.index - 1;
+                                        if (idx >= 0 && idx < memories.length) {
+                                            memories.splice(idx, 1);
+                                            saveMemories(memories);
+                                            toolRes = { success: true, message: 'Memory deleted.' };
+                                        } else {
+                                            toolRes = { success: false, message: 'Invalid memory index.' };
+                                        }
+                                    } else if (fullName === 'agent.updateMemory') {
+                                        const memories = getMemories();
+                                        const idx = args.index - 1;
+                                        if (idx >= 0 && idx < memories.length) {
+                                            memories[idx].content = args.content;
+                                            saveMemories(memories);
+                                            toolRes = { success: true, message: 'Memory updated.' };
+                                        } else {
+                                            toolRes = { success: false, message: 'Invalid memory index.' };
+                                        }
                                     } else {
-                                        memories.push({ content: args.content });
-                                        saveMemories(memories);
-                                        toolRes = { success: true, message: 'Memory added.' };
+                                        const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
+                                        if (!fs.existsSync(socketPath)) {
+                                            throw new Error(`No app or socket found for "${targetApp}"`);
+                                        }
+                                        await server.connect(socketPath);
+                                        toolRes = await server.request(targetApp, toolName, args);
                                     }
-                                } else if (fullName === 'agent.deleteMemory') {
-                                    const memories = getMemories();
-                                    const idx = args.index - 1;
-                                    if (idx >= 0 && idx < memories.length) {
-                                        memories.splice(idx, 1);
-                                        saveMemories(memories);
-                                        toolRes = { success: true, message: 'Memory deleted.' };
-                                    } else {
-                                        toolRes = { success: false, message: 'Invalid memory index.' };
-                                    }
-                                } else if (fullName === 'agent.updateMemory') {
-                                    const memories = getMemories();
-                                    const idx = args.index - 1;
-                                    if (idx >= 0 && idx < memories.length) {
-                                        memories[idx].content = args.content;
-                                        saveMemories(memories);
-                                        toolRes = { success: true, message: 'Memory updated.' };
-                                    } else {
-                                        toolRes = { success: false, message: 'Invalid memory index.' };
-                                    }
-                                } else {
-                                    const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
-                                    if (!fs.existsSync(socketPath)) {
-                                        throw new Error(`No app or socket found for "${targetApp}"`);
-                                    }
-                                    await server.connect(socketPath);
-                                    toolRes = await server.request(targetApp, toolName, args);
+                                    
+                                    console.log(`🤖 Tool [${fullName}] response:`, toolRes);
+                                    queue({ name: fullName, output: toolRes, time: (new Date()).toString() });
+                                } catch (err) {
+                                    console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
+                                    queue({
+                                        eventName: 'warning',
+                                        from: 'agent',
+                                        message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
+                                    });
                                 }
-                                
-                                console.log(`🤖 Tool [${fullName}] response:`, toolRes);
-
-                                toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
-                                toolResults.push({ name: fullName, output: toolRes, time: (new Date()).toString() });
-
-                            } catch (err) {
-                                console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
-                                queue({
-                                    eventName: 'warning',
-                                    from: 'agent',
-                                    message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
-                                });
-                            }
+                            })();
                         }
                     }
                 }
             }
 
-            chatHistory.push({ role: 'model', parts: toolCalls });
-            for (const res of toolResults) {
-                queue(res);
+            if (toolCalls.length > 0) {
+                chatHistory.push({ role: 'model', parts: toolCalls });
+                saveHistory();
             }
-            saveHistory();
 
         } catch (err) {
             console.error('🤖 Batch Process Error:', err);
