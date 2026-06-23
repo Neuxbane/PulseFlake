@@ -156,9 +156,9 @@ const computeTools = [
             properties: {
                 url: { type: 'string', description: 'HTTP/S URL of the file to download' },
                 filename: { type: 'string', description: 'Name of the destination file inside the sandbox' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['url', 'filename', 'sessionId']
+            required: ['url', 'filename']
         }
     },
     {
@@ -168,10 +168,10 @@ const computeTools = [
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Relative path of the file inside the session workspace' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' },
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' },
                 expires: { type: 'number', description: 'Expiration time in seconds (default: 3600 / 1 hour)' }
             },
-            required: ['path', 'sessionId']
+            required: ['path']
         }
     },
     {
@@ -182,9 +182,9 @@ const computeTools = [
             properties: {
                 path: { type: 'string', description: 'Relative path of the file to write' },
                 content: { type: 'string', description: 'The text content to write to the file' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['path', 'content', 'sessionId']
+            required: ['path', 'content']
         }
     },
     {
@@ -194,11 +194,11 @@ const computeTools = [
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Relative path of the file to read' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' },
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' },
                 from: { type: 'number', description: 'Optional starting line number to read (1-indexed)' },
                 to: { type: 'number', description: 'Optional ending line number to read (inclusive, 1-indexed)' }
             },
-            required: ['path', 'sessionId']
+            required: ['path']
         }
     },
     {
@@ -213,9 +213,9 @@ const computeTools = [
                     items: { type: 'string' },
                     description: 'Optional array of regex patterns to filter target file paths (e.g. [".*\\\\.js$"])' 
                 },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['searchRegex', 'sessionId']
+            required: ['searchRegex']
         }
     },
     {
@@ -225,9 +225,8 @@ const computeTools = [
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Optional relative path to list (defaults to session root)' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
-            },
-            required: ['sessionId']
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+            }
         }
     },
     {
@@ -238,9 +237,9 @@ const computeTools = [
             properties: {
                 src: { type: 'string', description: 'Source relative path' },
                 dest: { type: 'string', description: 'Destination relative path' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['src', 'dest', 'sessionId']
+            required: ['src', 'dest']
         }
     },
     {
@@ -251,9 +250,9 @@ const computeTools = [
             properties: {
                 src: { type: 'string', description: 'Source relative path' },
                 dest: { type: 'string', description: 'Destination relative path' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['src', 'dest', 'sessionId']
+            required: ['src', 'dest']
         }
     },
     {
@@ -264,9 +263,9 @@ const computeTools = [
             properties: {
                 path: { type: 'string', description: 'Relative path to remove' },
                 recursive: { type: 'boolean', description: 'Whether to remove recursively if directory (default: false)' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['path', 'sessionId']
+            required: ['path']
         }
     },
     {
@@ -288,9 +287,9 @@ const computeTools = [
                         required: ['find', 'replace']
                     }
                 },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['path', 'patches', 'sessionId']
+            required: ['path', 'patches']
         }
     },
     {
@@ -304,9 +303,9 @@ const computeTools = [
                     items: { type: 'string' },
                     description: 'Array of relative file paths in the sandbox workspace to convert' 
                 },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['paths', 'sessionId']
+            required: ['paths']
         }
     },
     {
@@ -317,9 +316,9 @@ const computeTools = [
             properties: {
                 hostPath: { type: 'string', description: 'Absolute or relative path of the file or directory on the host filesystem' },
                 sandboxPath: { type: 'string', description: 'Destination relative path inside the sandbox workspace' },
-                sessionId: { type: 'string', description: 'Session workspace identifier' }
+                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
             },
-            required: ['hostPath', 'sandboxPath', 'sessionId']
+            required: ['hostPath', 'sandboxPath']
         }
     }
 ];
