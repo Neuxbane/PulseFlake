@@ -386,272 +386,260 @@ async function handleSpawnSubagent(args, parentId = 'main') {
 }
 
 let pendingEvents = [];
-let debounceTimer = null;
+let lastEventTime = 0;
 const DEBOUNCE_DELAY = 5000; // 5 seconds
 let isProcessing = false;
 
-const processEvents = async () => {
-    if (pendingEvents.length === 0) return;
-    
-    // if (isProcessing) return;
-    invalidateHistory();
-    // isProcessing = true;
-    const eventsToProcess = [...pendingEvents];
-    pendingEvents = [];
-    let toolCalls = [];
-    let toolResults = [];
-    console.log(`🤖 Processing batch of ${eventsToProcess.length} events...`);
+const queue = (event) => {
+    pendingEvents.push(event);
+    lastEventTime = Date.now();
+};
 
+const process = async (eventsToProcess) => {
+    if (isProcessing) return;
+    isProcessing = true;
+    
     try {
-        // Build combined content with support for attachments
-        const combinedContent = [];
-        
-        for (const event of eventsToProcess) {
-            // Separate attachments from the event data
-            const eventCopy = typeof event === 'string' ? event : { ...event };
-            let attachments = [];
+        invalidateHistory();
+        let toolCalls = [];
+        let toolResults = [];
+        console.log(`🤖 Processing batch of ${eventsToProcess.length} events...`);
+
+        try {
+            // Build combined content with support for attachments
+            const combinedContent = [];
             
-            if (typeof eventCopy === 'object' && eventCopy?.data?.attachments) {
-                attachments = eventCopy.data?.attachments;
-                delete eventCopy.data?.attachments;
+            for (const event of eventsToProcess) {
+                // Separate attachments from the event data
+                const eventCopy = typeof event === 'string' ? event : { ...event };
+                let attachments = [];
+                
+                if (typeof eventCopy === 'object' && eventCopy?.data?.attachments) {
+                    attachments = eventCopy.data?.attachments;
+                    delete eventCopy.data?.attachments;
+                }
+                
+                // Add the event as text
+                combinedContent.push({ 
+                    text: typeof eventCopy === 'string' ? eventCopy : JSON.stringify(eventCopy) 
+                });
+                
+                // Add each attachment as a separate part
+                for (const attachmentPath of attachments) {
+                    combinedContent.push({ attachment: attachmentPath });
+                }
             }
+
+            const defaultTools = await server.request('tools', 'built-in');
             
-            // Add the event as text
-            combinedContent.push({ 
-                text: typeof eventCopy === 'string' ? eventCopy : JSON.stringify(eventCopy) 
+            // 1. RAG search for relevant tools
+            const ragSearchResults = await server.request('tools', 'search', combinedContent);
+            console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools`);
+            
+            // 2. Contain rules search for relevant tools
+            const rulesSearchResults = await server.request('tools', 'strict-search', combinedContent);
+            console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools`);
+            
+            // Combine both results, prioritizing RAG then Rules, deduplicate by tool name
+            const seenTools = new Set();
+            const combinedResults = [];
+            
+            [...ragSearchResults, ...rulesSearchResults].forEach(r => {
+                if (!seenTools.has(r.fullName)) {
+                    seenTools.add(r.fullName);
+                    combinedResults.push(r);
+                }
             });
             
-            // Add each attachment as a separate part
-            for (const attachmentPath of attachments) {
-                combinedContent.push({ attachment: attachmentPath });
+            const toolsForAI = [...combinedResults.slice(0, 10).map(r => ({
+                name: `${r.identifier}.${r.name}`,
+                description: r.definition.description,
+                parameters: r.definition.parameters
+            })), ...defaultTools];
+
+            if (chatHistory.slice(-1)[0] && chatHistory.slice(-1)[0].role == 'user') {
+                // combine the old part
+                combinedContent.push(...chatHistory.slice(-1)[0].parts);
+                chatHistory = chatHistory.slice(0, -1);
             }
-        }
 
-        const defaultTools = await server.request('tools', 'built-in');
-        
-        // 1. RAG search for relevant tools
-        const ragSearchResults = await server.request('tools', 'search', combinedContent);
-        console.log(`🔍 RAG search found ${ragSearchResults.length} potential tools`);
-        
-        // 2. Contain rules search for relevant tools
-        const rulesSearchResults = await server.request('tools', 'strict-search', combinedContent);
-        console.log(`🔍 Rules search found ${rulesSearchResults.length} potential tools`);
-        
-        // Combine both results, prioritizing RAG then Rules, deduplicate by tool name
-        const seenTools = new Set();
-        const combinedResults = [];
-        
-        [...ragSearchResults, ...rulesSearchResults].forEach(r => {
-            if (!seenTools.has(r.fullName)) {
-                seenTools.add(r.fullName);
-                combinedResults.push(r);
-            }
-        });
-        
-        const toolsForAI = [...combinedResults.slice(0, 10).map(r => ({
-            name: `${r.identifier}.${r.name}`,
-            description: r.definition.description,
-            parameters: r.definition.parameters
-        })), ...defaultTools];
+            // 2. Update chat history
+            chatHistory.push({ role: 'user', parts: combinedContent });
+            saveHistory();
 
-        if (chatHistory.slice(-1)[0].role == 'user') {
-            // combine the old part
-            combinedContent.push(...chatHistory.slice(-1)[0].parts);
-            chatHistory = chatHistory.slice(0, -1);
-        }
+            let messages = truncateHistory(chatHistory);
 
+            // Fetch memories and inject into context (as pseudo-history/system setup)
+            const currentMemories = getMemories();
+            const memoryContext = currentMemories.length > 0
+                ? currentMemories.map((m, i) => `[MEMORY ${i+1}] ${m.content}`).join('\n')
+                : "No memories stored.";
 
-        // 2. Update chat history
-        chatHistory.push({ role: 'user', parts: combinedContent });
-        saveHistory();
+            const systemInstruction = await getSystemInstruction(memoryContext);
 
-        let messages = truncateHistory(chatHistory);
-
-        // Fetch memories and inject into context (as pseudo-history/system setup)
-        const currentMemories = getMemories();
-        const memoryContext = currentMemories.length > 0
-            ? currentMemories.map((m, i) => `[MEMORY ${i+1}] ${m.content}`).join('\n')
-            : "No memories stored.";
-
-        // if (messages[0].role === 'model') {
-        //     messages = messages.slice(1);
-        // }
-
-        // messages = invalidateChats(messages);
-
-        const systemInstruction = await getSystemInstruction(memoryContext);
-
-        console.log('🤖 Thinking...');
-        const stream = provider.generate(messages, { 
-            systemInstruction, 
-            thinkingConfig: { include_thoughts: true }, // Enabling thinking for Gemini 2.0+
-            tools: [
-                ...toolsForAI, 
-                { 
-                    name: 'agent.spawnSubagent',
-                    description: 'Spawn a sub-agent to handle a specific sub-task. It will run based on instructions and report back.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            goal: { type: 'string', description: 'The specific sub-task goal for the sub-agent.' }
-                        },
-                        required: ['goal']
-                    }
-                },
-                {
-                    name: 'agent.addMemory',
-                    description: 'Add a new fact/memory to memory.jsonl (Max 20).',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            content: { type: 'string', description: 'The fact or memory to store.' }
-                        },
-                        required: ['content']
-                    }
-                },
-                {
-                    name: 'agent.deleteMemory',
-                    description: 'Delete a memory from memory.jsonl by index (1-based).',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            index: { type: 'integer', description: 'The index of the memory to delete (1-20).' }
-                        },
-                        required: ['index']
-                    }
-                },
-                {
-                    name: 'agent.updateMemory',
-                    description: 'Update an existing memory at a specific index (1-based).',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            index: { type: 'integer', description: 'The index of the memory to update (1-20).' },
-                            content: { type: 'string', description: 'The new content for the memory.' }
-                        },
-                        required: ['index', 'content']
-                    }
-                }
-            ]
-        });
-
-        for await (const chunkGenerator of stream) {
-            for await (const part of chunkGenerator) {
-                if (part.done) {
-                    // print out the part
-                    console.log('🤖 LLM Output:', part);
-                    // Check if text contains JSON-formatted function call
-                    let functionCallToExecute = part.functionCall;
-                    
-                    const textToParse = part.text || part.thought;
-                    if (textToParse && !functionCallToExecute) {
-                        functionCallToExecute = tryExtractFunctionCall(textToParse);
-                        if (functionCallToExecute) {
-                            console.log('🤖 Parsed JSON function call from text/thought');
+            console.log('🤖 Thinking...');
+            const stream = provider.generate(messages, { 
+                systemInstruction, 
+                thinkingConfig: { include_thoughts: true }, // Enabling thinking for Gemini 2.0+
+                tools: [
+                    ...toolsForAI, 
+                    { 
+                        name: 'agent.spawnSubagent',
+                        description: 'Spawn a sub-agent to handle a specific sub-task. It will run based on instructions and report back.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                goal: { type: 'string', description: 'The specific sub-task goal for the sub-agent.' }
+                            },
+                            required: ['goal']
+                        }
+                    },
+                    {
+                        name: 'agent.addMemory',
+                        description: 'Add a new fact/memory to memory.jsonl (Max 20).',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                content: { type: 'string', description: 'The fact or memory to store.' }
+                            },
+                            required: ['content']
+                        }
+                    },
+                    {
+                        name: 'agent.deleteMemory',
+                        description: 'Delete a memory from memory.jsonl by index (1-based).',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                index: { type: 'integer', description: 'The index of the memory to delete (1-20).' }
+                            },
+                            required: ['index']
+                        }
+                    },
+                    {
+                        name: 'agent.updateMemory',
+                        description: 'Update an existing memory at a specific index (1-based).',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                index: { type: 'integer', description: 'The index of the memory to update (1-20).' },
+                                content: { type: 'string', description: 'The new content for the memory.' }
+                            },
+                            required: ['index', 'content']
                         }
                     }
+                ]
+            });
 
-                    if (textToParse && !functionCallToExecute) {
-                        pendingEvents.push({
-                            eventName: 'warning',
-                            from: 'agent',
-                            message: `LLM output was not a function call: ${textToParse}. Please use function calling.`
-                        });
-                        if (debounceTimer) clearTimeout(debounceTimer);
-                        debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
-                    }
-
-                    if (functionCallToExecute) {
-
-                        const fullName = functionCallToExecute.name;
-                        console.log(`🤖 Function call detected: ${fullName}`);
-                        const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
-                        // Ensure args is always an object
-                        const args = functionCallToExecute.args || {};
+            for await (const chunkGenerator of stream) {
+                for await (const part of chunkGenerator) {
+                    if (part.done) {
+                        // print out the part
+                        console.log('🤖 LLM Output:', part);
+                        // Check if text contains JSON-formatted function call
+                        let functionCallToExecute = part.functionCall;
                         
-                        console.log(`🤖 AI calling ${targetApp} -> ${toolName} with`, args);
-
-                        try {
-                            let toolRes;
-                            if (fullName === 'agent.spawnSubagent') {
-                                toolRes = await handleSpawnSubagent(args, 'main');
-                            } else if (fullName === 'agent.addMemory') {
-                                const memories = getMemories();
-                                if (memories.length >= 20) {
-                                    toolRes = { success: false, message: 'Max memory limit reached (20). Please delete or update an existing memory.' };
-                                } else {
-                                    memories.push({ content: args.content });
-                                    saveMemories(memories);
-                                    toolRes = { success: true, message: 'Memory added.' };
-                                }
-                            } else if (fullName === 'agent.deleteMemory') {
-                                const memories = getMemories();
-                                const idx = args.index - 1;
-                                if (idx >= 0 && idx < memories.length) {
-                                    memories.splice(idx, 1);
-                                    saveMemories(memories);
-                                    toolRes = { success: true, message: 'Memory deleted.' };
-                                } else {
-                                    toolRes = { success: false, message: 'Invalid memory index.' };
-                                }
-                            } else if (fullName === 'agent.updateMemory') {
-                                const memories = getMemories();
-                                const idx = args.index - 1;
-                                if (idx >= 0 && idx < memories.length) {
-                                    memories[idx].content = args.content;
-                                    saveMemories(memories);
-                                    toolRes = { success: true, message: 'Memory updated.' };
-                                } else {
-                                    toolRes = { success: false, message: 'Invalid memory index.' };
-                                }
-                            } else {
-                                const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
-                                if (!fs.existsSync(socketPath)) {
-                                    throw new Error(`No app or socket found for "${targetApp}"`);
-                                }
-                                await server.connect(socketPath);
-                                toolRes = await server.request(targetApp, toolName, args);
+                        const textToParse = part.text || part.thought;
+                        if (textToParse && !functionCallToExecute) {
+                            functionCallToExecute = tryExtractFunctionCall(textToParse);
+                            if (functionCallToExecute) {
+                                console.log('🤖 Parsed JSON function call from text/thought');
                             }
-                            
-                            console.log(`🤖 Tool [${fullName}] response:`, toolRes);
+                        }
 
-                            toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
-                            toolResults.push({ name: fullName, output: toolRes, time: (new Date()).toString() });
-
-                        } catch (err) {
-                            console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
-                            pendingEvents.push({
+                        if (textToParse && !functionCallToExecute) {
+                            queue({
                                 eventName: 'warning',
                                 from: 'agent',
-                                message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
+                                message: `LLM output was not a function call: ${textToParse}. Please use function calling.`
                             });
-                            if (debounceTimer) clearTimeout(debounceTimer);
-                            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
+                        }
+
+                        if (functionCallToExecute) {
+                            const fullName = functionCallToExecute.name;
+                            console.log(`🤖 Function call detected: ${fullName}`);
+                            const [targetApp, toolName] = fullName.includes('.') ? fullName.split('.') : ['unknown', fullName];
+                            // Ensure args is always an object
+                            const args = functionCallToExecute.args || {};
+                            
+                            console.log(`🤖 AI calling ${targetApp} -> ${toolName} with`, args);
+
+                            try {
+                                let toolRes;
+                                if (fullName === 'agent.spawnSubagent') {
+                                    toolRes = await handleSpawnSubagent(args, 'main');
+                                } else if (fullName === 'agent.addMemory') {
+                                    const memories = getMemories();
+                                    if (memories.length >= 20) {
+                                        toolRes = { success: false, message: 'Max memory limit reached (20). Please delete or update an existing memory.' };
+                                    } else {
+                                        memories.push({ content: args.content });
+                                        saveMemories(memories);
+                                        toolRes = { success: true, message: 'Memory added.' };
+                                    }
+                                } else if (fullName === 'agent.deleteMemory') {
+                                    const memories = getMemories();
+                                    const idx = args.index - 1;
+                                    if (idx >= 0 && idx < memories.length) {
+                                        memories.splice(idx, 1);
+                                        saveMemories(memories);
+                                        toolRes = { success: true, message: 'Memory deleted.' };
+                                    } else {
+                                        toolRes = { success: false, message: 'Invalid memory index.' };
+                                    }
+                                } else if (fullName === 'agent.updateMemory') {
+                                    const memories = getMemories();
+                                    const idx = args.index - 1;
+                                    if (idx >= 0 && idx < memories.length) {
+                                        memories[idx].content = args.content;
+                                        saveMemories(memories);
+                                        toolRes = { success: true, message: 'Memory updated.' };
+                                    } else {
+                                        toolRes = { success: false, message: 'Invalid memory index.' };
+                                    }
+                                } else {
+                                    const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
+                                    if (!fs.existsSync(socketPath)) {
+                                        throw new Error(`No app or socket found for "${targetApp}"`);
+                                    }
+                                    await server.connect(socketPath);
+                                    toolRes = await server.request(targetApp, toolName, args);
+                                }
+                                
+                                console.log(`🤖 Tool [${fullName}] response:`, toolRes);
+
+                                toolCalls.push({ text: JSON.stringify(functionCallToExecute) });
+                                toolResults.push({ name: fullName, output: toolRes, time: (new Date()).toString() });
+
+                            } catch (err) {
+                                console.error(`🤖 Failed to call tool ${fullName}:`, err.message);
+                                queue({
+                                    eventName: 'warning',
+                                    from: 'agent',
+                                    message: `Failed to call tool ${fullName}: ${err.message}. Check or search tools first using tools.search.`
+                                });
+                            }
                         }
                     }
                 }
             }
+
+            chatHistory.push({ role: 'model', parts: toolCalls });
+            for (const res of toolResults) {
+                queue(res);
+            }
+            saveHistory();
+
+        } catch (err) {
+            console.error('🤖 Batch Process Error:', err);
+            queue({
+                eventName: 'error',
+                from: 'agent',
+                message: `Error during processing: ${err.message}. please response with function calling to fix the issue or tools.sleep to skip time.`
+            });
         }
-    } catch (err) {
-        console.error('🤖 Batch Process Error:', err);
-        pendingEvents.push({
-            eventName: 'error',
-            from: 'agent',
-            message: `Error during processing: ${err.message}. please response with function calling to fix the issue or tools.sleep to skip time.`
-        });
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
     } finally {
-        chatHistory.push({ role: 'model', parts: toolCalls });
-        pendingEvents.push(...toolResults);
-        saveHistory();
-        
-        // isProcessing = false;
-        // Check if new events arrived during processing
-        if (pendingEvents.length > 0) {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
-        }
+        isProcessing = false;
     }
 };
 
@@ -664,11 +652,27 @@ server.connect(toolsSocketPath).then(() => {
 // Listener for ANY generic event - with Debounce aggregation
 server.subscribe('*', 'event', async (req) => {
     console.log(`🤖 Received [${req.eventName}] from ${req.from}. Queuing...`);
-    pendingEvents.push({req, time: (new Date()).toString()});
-
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(processEvents, DEBOUNCE_DELAY);
+    queue({ req, time: (new Date()).toString() });
 });
+
+setTimeout(async () => {
+    while (true) {
+        try {
+            const now = Date.now();
+            const inDebounce = (now - lastEventTime) < DEBOUNCE_DELAY;
+            const hasEvents = pendingEvents.length > 0;
+            
+            if (hasEvents && !isProcessing && !inDebounce) {
+                const eventsToProcess = [...pendingEvents];
+                pendingEvents = [];
+                await process(eventsToProcess);
+            }
+        } catch (err) {
+            console.error('Error in agent loop:', err);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}, 1000);
 
 server.start().then(() => {
     console.log('🤖 Agent server is running.');
