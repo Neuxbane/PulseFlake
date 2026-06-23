@@ -1,0 +1,1 @@
+Enhanced web-based GUI to monitor active services, manually trigger tools, and chat with the Agent.

@@ -28,13 +28,22 @@ const imagenTools = [
 // --- 2. CONNECT TO TOOLS ---
 server.connect(TOOLS_SOCKET_PATH, async () => {
     console.log('[imagen] Connected to Tools; registering capabilities...');
+    let instruction = "";
     try {
-        await server.request('tools', 'register', imagenTools);
+        const instPath = path.resolve(__dirname, 'instruction.txt');
+        if (fs.existsSync(instPath)) {
+            instruction = fs.readFileSync(instPath, 'utf8').trim();
+        }
+    } catch (e) {
+        console.error('[imagen] Failed to read instruction.txt:', e.message);
+    }
+    try {
+        await server.request('tools', 'register', { instruction, tools: imagenTools });
         console.log('[imagen] Tools registered.');
     } catch (err) {
         console.error('[imagen] Failed to register tools:', err.message);
     }
-    server.broadcast('register', imagenTools);
+    server.broadcast('register', { instruction, tools: imagenTools });
 });
 
 // --- 3. CONNECT TO AGENT ---

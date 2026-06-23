@@ -91,13 +91,23 @@ client.once('ready', () => {
             }
         ];
 
+        let instruction = "";
+        try {
+            const instPath = path.resolve(__dirname, 'instruction.txt');
+            if (fs.existsSync(instPath)) {
+                instruction = fs.readFileSync(instPath, 'utf8').trim();
+            }
+        } catch (e) {
+            console.error('[discord] Failed to read instruction.txt:', e.message);
+        }
+
         // 1. Register with the Tools RAG server
-        server.request('tools', 'register', discordTools).then(res => {
+        server.request('tools', 'register', { instruction, tools: discordTools }).then(res => {
             console.log(`[discord] Tools registered with RAG server:`, res);
         });
 
         // 2. Broadcast to any listening Agents (Many-to-Many)
-        server.broadcast('register', discordTools);
+        server.broadcast('register', { instruction, tools: discordTools });
     });
 });
 

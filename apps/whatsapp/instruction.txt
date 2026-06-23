@@ -1,0 +1,1 @@
+WhatsApp Messenger bridge to read chats, send messages, manage chat notes, and summarize chats.

@@ -1,0 +1,1 @@
+System device integration for executing command-line instructions, file operations, and remote connections on the host machine.

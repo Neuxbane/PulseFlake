@@ -94,13 +94,22 @@ const universityTools = [
 // --- 3. CONNECT TO TOOLS ---
 server.connect(TOOLS_SOCKET_PATH, async () => {
     console.log('[university] Connected to Tools; registering capabilities...');
+    let instruction = "";
     try {
-        await server.request('tools', 'register', universityTools);
+        const instPath = path.resolve(__dirname, 'instruction.txt');
+        if (fs.existsSync(instPath)) {
+            instruction = fs.readFileSync(instPath, 'utf8').trim();
+        }
+    } catch (e) {
+        console.error('[university] Failed to read instruction.txt:', e.message);
+    }
+    try {
+        await server.request('tools', 'register', { instruction, tools: universityTools });
         console.log('[university] University tools registered.');
     } catch (err) {
         console.error('[university] Registration error:', err.message);
     }
-    server.broadcast('register', universityTools);
+    server.broadcast('register', { instruction, tools: universityTools });
 });
 
 // --- 4. CONNECT TO AGENT ---

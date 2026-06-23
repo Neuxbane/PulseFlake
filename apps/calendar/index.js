@@ -767,7 +767,16 @@ server.connect(TOOLS_SOCKET_PATH, async () => {
     console.log('[calendar] Connected to Tools; registering capabilities...');
     console.log(`[calendar] System timezone: ${SYSTEM_TIMEZONE} (UTC${TIMEZONE_OFFSET_MINUTES >= 0 ? '+' : ''}${Math.floor(TIMEZONE_OFFSET_MINUTES / 60)}:${String(TIMEZONE_OFFSET_MINUTES % 60).padStart(2, '0')})`);
     try {
-        await server.request('tools', 'register', calendarTools);
+        let instruction = "";
+        try {
+            const instPath = path.resolve(__dirname, 'instruction.txt');
+            if (fs.existsSync(instPath)) {
+                instruction = fs.readFileSync(instPath, 'utf8').trim();
+            }
+        } catch (e) {
+            console.error('[calendar] Failed to read instruction.txt:', e.message);
+        }
+        await server.request('tools', 'register', { instruction, tools: calendarTools });
         console.log('[calendar] Calendar tools registered.');
     } catch (err) {
         console.error('[calendar] Tool registration failed:', err.message);

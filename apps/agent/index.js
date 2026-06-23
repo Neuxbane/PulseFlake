@@ -187,6 +187,61 @@ const truncateHistory = (history) => {
     return updatedHistory;
 };
 
+const getInjectedAppInstructions = async () => {
+    let appInstructions = "";
+    try {
+        const registeredInstructions = await server.request('tools', 'getInstructions');
+        if (registeredInstructions) {
+            for (const [appName, instruction] of Object.entries(registeredInstructions)) {
+                if (instruction) {
+                    appInstructions += `\n<app name="${appName}">${instruction}</app>`;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load app instructions from tools registry:', e.message);
+    }
+    return appInstructions;
+};
+
+const getSystemInstruction = async (memoryContext) => {
+    let baseInstruction = "";
+    if (fs.existsSync(instructionPath)) {
+        try {
+            baseInstruction = fs.readFileSync(instructionPath, 'utf8').trim();
+        } catch (e) {
+            console.error('Failed to load instruction:', e);
+        }
+    }
+    if (!baseInstruction) {
+        baseInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
+To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
+Use \`agent.addMemory\`, \`updateMemory\`, or \`deleteMemory\` to store/curate key facts. If at 20, delete or replace low-value memories. Priority: user identity, core goals, and critical long-term context.
+
+### TOOL DISCOVERY & EXECUTION PROTOCOL
+When given a goal or task:
+1. Identify the appropriate app for the task by checking the \`<app name="NAME">\` descriptions in the "REGISTERED SERVICES & APPS" section.
+2. Directly query the tools for that specific app using \`tools.listAppTools\` (e.g. call \`tools.listAppTools\` with \`app: "whatsapp"\` if the task involves WhatsApp).
+3. If no specific app matches or you need general tools, use \`tools.search\` or \`tools.strict-search\` to locate matching capabilities.
+4. Evaluate and execute the selected tool:
+   - If the tool fits, call it.
+   - If a tool fails or is missing, dynamically search alternative apps and tools using the steps above.
+5. Continue this loop until the correct tool is executed to achieve the goal.`;
+    }
+
+    const appInstructions = await getInjectedAppInstructions();
+    let instruction = baseInstruction;
+    if (appInstructions) {
+        instruction += `\n\n### REGISTERED SERVICES & APPS\nThe following apps are available in the system. Use tools.listAppTools to inspect their functions:\n${appInstructions}`;
+    }
+    
+    if (memoryContext) {
+        instruction += `\n\n### MEMORY STORAGE (MAX 20)\n${memoryContext}`;
+    }
+
+    return instruction;
+};
+
 class SubAgent {
     constructor(id, parentId, instruction, goal, toolsForAI, parentResolve) {
         this.id = id;
@@ -321,10 +376,7 @@ async function handleSpawnSubagent(args, parentId = 'main') {
     })), ...defaultTools];
 
     // Read current instruction for the sub-agent
-    let baseInstruction = "";
-    if (fs.existsSync(instructionPath)) {
-        baseInstruction = fs.readFileSync(instructionPath, 'utf8');
-    }
+    const baseInstruction = await getSystemInstruction("");
 
     return new Promise((resolve) => {
         const sub = new SubAgent(id, parentId, baseInstruction, args.goal, toolsForAI, resolve);
@@ -427,28 +479,7 @@ const processEvents = async () => {
 
         // messages = invalidateChats(messages);
 
-        let systemInstruction = `This system runs on Event-Driven. No Naked Text, use function calling. The history are use function call but they saved via Naked Text because of the compatibility issue.
-To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
-Use \`agent.addMemory\`, \`updateMemory\`, or \`deleteMemory\` to store/curate key facts. If at 20, delete or replace low-value memories. Priority: user identity, core goals, and critical long-term context.
-
-### TOOL DISCOVERY & EXECUTION PROTOCOL
-When given a goal or task:
-1. Discover compatible apps and tools. Start by listing the registered apps using \`tools.listApps\`, then check details of specific apps using \`tools.listAppTools\` (passing the app name). You can also search for relevant tools using \`tools.search\` or \`tools.strict-search\`.
-2. Evaluate and select the function to call:
-   - If a tool fits, call it.
-   - If the tool is not a perfect fit, fails, or is missing from your function list, search other apps/functions dynamically to find a compatible alternative.
-3. Continue this search loop until you find and execute the correct tool for the job.
-
-### MEMORY STORAGE (MAX 20)
-${memoryContext}`;
-
-        if (fs.existsSync(instructionPath)) {
-            try {
-                systemInstruction = fs.readFileSync(instructionPath, 'utf8') + `\n\n### MEMORY STORAGE (MAX 20)\n${memoryContext}`;
-            } catch (e) {
-                console.error('Failed to load instruction:', e);
-            }
-        }
+        const systemInstruction = await getSystemInstruction(memoryContext);
 
         console.log('🤖 Thinking...');
         const stream = provider.generate(messages, { 

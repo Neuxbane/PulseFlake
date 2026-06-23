@@ -924,7 +924,16 @@ server.listen('*', 'copyFromHost', async (req, res) => {
 server.connect(TOOLS_SOCKET_PATH, async () => {
     console.log('[compute] Connected to Tools; registering capabilities...');
     try {
-        await server.request('tools', 'register', computeTools);
+        let instruction = "";
+        try {
+            const instPath = path.resolve(__dirname, 'instruction.txt');
+            if (fs.existsSync(instPath)) {
+                instruction = fs.readFileSync(instPath, 'utf8').trim();
+            }
+        } catch (e) {
+            console.error('[compute] Failed to read instruction.txt:', e.message);
+        }
+        await server.request('tools', 'register', { instruction, tools: computeTools });
         console.log('[compute] Compute tools registered.');
     } catch (err) {
         console.error('[compute] Tool registration failed:', err.message);

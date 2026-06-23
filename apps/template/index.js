@@ -33,17 +33,27 @@ const templateTools = [
 // --- 2. CONNECT TO TOOLS ---
 server.connect(TOOLS_SOCKET_PATH, async () => {
     console.log('[template] Connected to Tools; registering capabilities...');
+    const fs = require('fs');
+    let instruction = "";
+    try {
+        const instPath = path.resolve(__dirname, 'instruction.txt');
+        if (fs.existsSync(instPath)) {
+            instruction = fs.readFileSync(instPath, 'utf8').trim();
+        }
+    } catch (e) {
+        console.error('[template] Failed to read instruction.txt:', e.message);
+    }
     
     // Register with the RAG server
     try {
-        await server.request('tools', 'register', templateTools);
+        await server.request('tools', 'register', { instruction, tools: templateTools });
         console.log('[template] Tools registered with RAG server.');
     } catch (err) {
         console.error('[template] Failed to register tools:', err.message);
     }
 
     // Broadcast registration to any listening Agents
-    server.broadcast('register', templateTools);
+    server.broadcast('register', { instruction, tools: templateTools });
 });
 
 // --- 3. CONNECT TO AGENT ---

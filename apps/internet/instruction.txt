@@ -1,0 +1,1 @@
+Perform web search queries using DuckDuckGo (Tor-based) and retrieve page contents.

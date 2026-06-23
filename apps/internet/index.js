@@ -64,15 +64,25 @@ const toolsSocketPath = path.resolve(__dirname, '../tools/tools.sock');
 
 server.connect(toolsSocketPath,async () => {
     console.log('🌐 Internet app connected to tools server.');
+    const fs = require('fs');
+    let instruction = "";
+    try {
+        const instPath = path.resolve(__dirname, 'instruction.txt');
+        if (fs.existsSync(instPath)) {
+            instruction = fs.readFileSync(instPath, 'utf8').trim();
+        }
+    } catch (e) {
+        console.error(`🌐 Failed to read instruction.txt:`, e.message);
+    }
     
     try {
-        await server.request('tools', 'register', internetTools);
+        await server.request('tools', 'register', { instruction, tools: internetTools });
         console.log(`🌐 Registered tools with RAG server`);
     } catch (err) {
         console.error(`🌐 Registration failed:`, err.message);
     }
 
-    server.broadcast('register', internetTools);
+    server.broadcast('register', { instruction, tools: internetTools });
 });
 
 server.listen('*', 'search', async (req, res) => {

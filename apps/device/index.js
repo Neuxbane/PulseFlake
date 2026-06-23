@@ -18,7 +18,19 @@ const toolsSocketPath = require('path').resolve(__dirname, '../tools/tools.sock'
 
 server.connect(toolsSocketPath).then(async() => {
     console.log('[device] Connected to tools server.');
-    await server.request('tools', 'register', Object.entries(deviceApp.schema).map(([method, definition]) => ({
+    const fs = require('fs');
+    const path = require('path');
+    let instruction = "";
+    try {
+        const instPath = path.resolve(__dirname, 'instruction.txt');
+        if (fs.existsSync(instPath)) {
+            instruction = fs.readFileSync(instPath, 'utf8').trim();
+        }
+    } catch (e) {
+        console.error('[device] Failed to read instruction.txt:', e.message);
+    }
+
+    const deviceTools = Object.entries(deviceApp.schema).map(([method, definition]) => ({
         parameters: {
             type: definition.type,
             properties: definition.properties,
@@ -26,7 +38,9 @@ server.connect(toolsSocketPath).then(async() => {
         },
         description: definition.description,
         name: method
-    }))).then(() => {
+    }));
+
+    await server.request('tools', 'register', { instruction, tools: deviceTools }).then(() => {
         console.log('[device] Registered tools with tools server.');
     }).catch(err => {
         console.error('[device] Failed to register tools:', err);

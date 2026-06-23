@@ -1,0 +1,1 @@
+Bridge to Discord. Read chats, channels, DMs, send replies/reactions, and broadcast events to the agent.

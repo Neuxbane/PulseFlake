@@ -8,6 +8,9 @@ const provider = new (require('#Providers').GeminiProvider)({ apiKeys, models })
 
 let tools = {};
 let toolEmbeddings = {};
+let appInstructions = {
+    tools: "Registry for all available system tools, supporting semantic search (RAG) and keyword strict-search."
+};
 
 const cosineSimilarity = (vecA, vecB) => {
     const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
@@ -18,13 +21,25 @@ const cosineSimilarity = (vecA, vecB) => {
 
 server.listen('*', 'register', async(req, res) => {
   const toolName = req.from;
-  const toolInfo = req.data;
+  const payload = req.data;
+  
+  let toolsToRegister = [];
+  let appInstruction = "";
+  
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && payload.tools) {
+    toolsToRegister = Array.isArray(payload.tools) ? payload.tools : [payload.tools];
+    appInstruction = payload.instruction || "";
+  } else {
+    toolsToRegister = Array.isArray(payload) ? payload : [payload];
+  }
+  
+  if (appInstruction) {
+    appInstructions[toolName] = appInstruction;
+    console.log(`🔧 Registered instruction for app: ${toolName}`);
+  }
   
   // Store tool with its originating identifier
   if (!tools[toolName]) tools[toolName] = [];
-  
-  // We expect toolInfo to be an array or a single tool object
-  const toolsToRegister = Array.isArray(toolInfo) ? toolInfo : [toolInfo];
   
   for (const info of toolsToRegister) {
     const toolActualName = info.name;
@@ -42,6 +57,10 @@ server.listen('*', 'register', async(req, res) => {
     }
   }
   res.send({ success: true });
+});
+
+server.listen('*', 'getInstructions', async(req, res) => {
+    res.send(appInstructions);
 });
 
 // Sending the tools's tools

@@ -81,27 +81,39 @@ async function autoConnect() {
 async function registerConsoleTools() {
     try {
         console.log('[console] Registering console tools...');
-        await server.request('tools', 'register', [
-            {
-                name: "message",
-                description: "Sends a direct message or critical notification to the human operator's browser console. Use this to provide status updates, request attention, or display findings that don't belong in a standard conversation flow.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        content: { 
-                            type: "string", 
-                            description: "The primary message text. Supports plaintext and basic terminology. Be concise but descriptive." 
-                        },
-                        type: { 
-                            type: "string", 
-                            enum: ["info", "success", "warning", "error"], 
-                            description: "The visual priority level. 'success' for completions, 'warning' for retryable issues, 'error' for blockers, 'info' for general state." 
-                        }
-                    },
-                    required: ["content"]
-                }
+        let instruction = "";
+        try {
+            const instPath = path.resolve(__dirname, 'instruction.txt');
+            if (fs.existsSync(instPath)) {
+                instruction = fs.readFileSync(instPath, 'utf8').trim();
             }
-        ]);
+        } catch (e) {
+            console.error('[console] Failed to read instruction.txt:', e.message);
+        }
+        await server.request('tools', 'register', {
+            instruction,
+            tools: [
+                {
+                    name: "message",
+                    description: "Sends a direct message or critical notification to the human operator's browser console. Use this to provide status updates, request attention, or display findings that don't belong in a standard conversation flow.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            content: { 
+                                type: "string", 
+                                description: "The primary message text. Supports plaintext and basic terminology. Be concise but descriptive." 
+                            },
+                            type: { 
+                                type: "string", 
+                                enum: ["info", "success", "warning", "error"], 
+                                description: "The visual priority level. 'success' for completions, 'warning' for retryable issues, 'error' for blockers, 'info' for general state." 
+                            }
+                        },
+                        required: ["content"]
+                    }
+                }
+            ]
+        });
     } catch (e) {
         console.error('[console] Failed to register tools:', e.message);
     }
