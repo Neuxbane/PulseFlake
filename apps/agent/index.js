@@ -395,7 +395,7 @@ const queue = (event) => {
     lastEventTime = Date.now();
 };
 
-const process = async (eventsToProcess) => {
+const processEvents = async (eventsToProcess) => {
     if (isProcessing) return;
     isProcessing = true;
     
@@ -665,7 +665,7 @@ setTimeout(async () => {
             if (hasEvents && !isProcessing && !inDebounce) {
                 const eventsToProcess = [...pendingEvents];
                 pendingEvents = [];
-                await process(eventsToProcess);
+                await processEvents(eventsToProcess);
             }
         } catch (err) {
             console.error('Error in agent loop:', err);
