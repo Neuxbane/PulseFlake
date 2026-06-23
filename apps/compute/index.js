@@ -10,9 +10,8 @@ const TOOLS_SOCKET_PATH = path.resolve(__dirname, '../tools/tools.sock');
 const CONSOLE_PORT = process.env.CONSOLE_PORT || 6969;
 
 // --- HELPERS ---
-const getContainerName = (sessionId) => {
-    const safeId = (sessionId || 'default').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    return `pulseflake-session-${safeId}`;
+const getContainerName = () => {
+    return 'pulseflake-session-default';
 };
 
 const getSafeContainerPath = (relPath) => {
@@ -32,17 +31,16 @@ const getHostTempPath = () => {
     return fs.mkdtempSync(path.join(baseTemp, 'transfer-'));
 };
 
-const getHostRootPath = (sessionId) => {
-    const safeId = (sessionId || 'default').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const hostRootPath = path.resolve(__dirname, 'root', safeId);
+const getHostRootPath = () => {
+    const hostRootPath = path.resolve(__dirname, 'root');
     if (!fs.existsSync(hostRootPath)) {
         fs.mkdirSync(hostRootPath, { recursive: true });
     }
     return hostRootPath;
 };
 
-const startContainer = (containerName, image, sessionId) => {
-    const hostRootPath = getHostRootPath(sessionId);
+const startContainer = (containerName, image) => {
+    const hostRootPath = getHostRootPath();
     const runCmd = `docker run -d --name ${containerName} -v "${hostRootPath}:/root" "${image}" tail -f /dev/null`;
     console.log(`[compute] Starting background container: ${runCmd}`);
     return new Promise((resolve, reject) => {
@@ -53,8 +51,8 @@ const startContainer = (containerName, image, sessionId) => {
     });
 };
 
-const ensureContainer = async (sessionId, image = 'python:3.10-alpine') => {
-    const containerName = getContainerName(sessionId);
+const ensureContainer = async (image = 'python:3.10-alpine') => {
+    const containerName = getContainerName();
     
     // Check if container exists
     const checkCmd = `docker ps -a --filter "name=^/${containerName}$" --format "{{.Names}} {{.Status}} {{.Image}}"`;
@@ -71,7 +69,7 @@ const ensureContainer = async (sessionId, image = 'python:3.10-alpine') => {
                 if (containerImage !== image) {
                     console.log(`[compute] Container ${containerName} image mismatch (current: ${containerImage}, requested: ${image}). Recreating...`);
                     exec(`docker rm -f ${containerName}`, (rmErr) => {
-                        startContainer(containerName, image, sessionId).then(resolve).catch(reject);
+                        startContainer(containerName, image).then(resolve).catch(reject);
                     });
                 } else if (!isRunning) {
                     console.log(`[compute] Container ${containerName} exists but is stopped. Starting...`);
@@ -83,7 +81,7 @@ const ensureContainer = async (sessionId, image = 'python:3.10-alpine') => {
                     resolve(containerName);
                 }
             } else {
-                startContainer(containerName, image, sessionId).then(resolve).catch(reject);
+                startContainer(containerName, image).then(resolve).catch(reject);
             }
         });
     });
@@ -132,7 +130,7 @@ const copyFromContainer = (containerName, containerPath, hostPath) => {
 const computeTools = [
     {
         name: 'run',
-        description: 'Execute a command inside a sandboxed, ephemeral Docker container. You can pass files to be written in the workspace before execution. Use a consistent sessionId to persist files between runs.',
+        description: 'Execute a command inside a sandboxed, ephemeral Docker container. You can pass files to be written in the workspace before execution.',
         parameters: {
             type: 'object',
             properties: {
@@ -142,7 +140,6 @@ const computeTools = [
                     type: 'object', 
                     description: 'Optional dictionary of files to create before running. Key is the filename, value is the file text content. E.g. {"script.py": "print(\'hello\')"}' 
                 },
-                sessionId: { type: 'string', description: 'Optional workspace identifier to persist state and files across multiple tool calls' },
                 timeout: { type: 'number', description: 'Execution timeout in milliseconds (default: 30000)' }
             },
             required: ['command']
@@ -150,25 +147,23 @@ const computeTools = [
     },
     {
         name: 'downloadToSandbox',
-        description: 'Download a file from a URL directly into the sandbox session workspace.',
+        description: 'Download a file from a URL directly into the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 url: { type: 'string', description: 'HTTP/S URL of the file to download' },
-                filename: { type: 'string', description: 'Name of the destination file inside the sandbox' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                filename: { type: 'string', description: 'Name of the destination file inside the sandbox' }
             },
             required: ['url', 'filename']
         }
     },
     {
         name: 'downloadable',
-        description: 'Expose a file in the session workspace to a public downloadable URL that expires after a set time.',
+        description: 'Expose a file in the sandbox workspace to a public downloadable URL that expires after a set time.',
         parameters: {
             type: 'object',
             properties: {
-                path: { type: 'string', description: 'Relative path of the file inside the session workspace' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' },
+                path: { type: 'string', description: 'Relative path of the file inside the sandbox workspace' },
                 expires: { type: 'number', description: 'Expiration time in seconds (default: 3600 / 1 hour)' }
             },
             required: ['path']
@@ -176,25 +171,23 @@ const computeTools = [
     },
     {
         name: 'write',
-        description: 'Create or overwrite a file inside the sandbox session workspace.',
+        description: 'Create or overwrite a file inside the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Relative path of the file to write' },
-                content: { type: 'string', description: 'The text content to write to the file' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                content: { type: 'string', description: 'The text content to write to the file' }
             },
             required: ['path', 'content']
         }
     },
     {
         name: 'read',
-        description: 'Read the contents of a file inside the sandbox session workspace. Supports line range selection.',
+        description: 'Read the contents of a file inside the sandbox workspace. Supports line range selection.',
         parameters: {
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Relative path of the file to read' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' },
                 from: { type: 'number', description: 'Optional starting line number to read (1-indexed)' },
                 to: { type: 'number', description: 'Optional ending line number to read (inclusive, 1-indexed)' }
             },
@@ -212,65 +205,60 @@ const computeTools = [
                     type: 'array', 
                     items: { type: 'string' },
                     description: 'Optional array of regex patterns to filter target file paths (e.g. [".*\\\\.js$"])' 
-                },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                }
             },
             required: ['searchRegex']
         }
     },
     {
         name: 'list',
-        description: 'List files and directories inside the sandbox session workspace.',
+        description: 'List files and directories inside the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
-                path: { type: 'string', description: 'Optional relative path to list (defaults to session root)' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                path: { type: 'string', description: 'Optional relative path to list (defaults to sandbox root)' }
             }
         }
     },
     {
         name: 'copy',
-        description: 'Copy a file inside the sandbox session workspace.',
+        description: 'Copy a file inside the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 src: { type: 'string', description: 'Source relative path' },
-                dest: { type: 'string', description: 'Destination relative path' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                dest: { type: 'string', description: 'Destination relative path' }
             },
             required: ['src', 'dest']
         }
     },
     {
         name: 'move',
-        description: 'Move or rename a file inside the sandbox session workspace.',
+        description: 'Move or rename a file inside the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 src: { type: 'string', description: 'Source relative path' },
-                dest: { type: 'string', description: 'Destination relative path' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                dest: { type: 'string', description: 'Destination relative path' }
             },
             required: ['src', 'dest']
         }
     },
     {
         name: 'remove',
-        description: 'Remove a file or directory inside the sandbox session workspace.',
+        description: 'Remove a file or directory inside the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 path: { type: 'string', description: 'Relative path to remove' },
-                recursive: { type: 'boolean', description: 'Whether to remove recursively if directory (default: false)' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                recursive: { type: 'boolean', description: 'Whether to remove recursively if directory (default: false)' }
             },
             required: ['path']
         }
     },
     {
         name: 'patch',
-        description: 'Search and replace text inside a file in the sandbox session workspace.',
+        description: 'Search and replace text inside a file in the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
@@ -286,8 +274,7 @@ const computeTools = [
                         },
                         required: ['find', 'replace']
                     }
-                },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                }
             },
             required: ['path', 'patches']
         }
@@ -302,21 +289,19 @@ const computeTools = [
                     type: 'array', 
                     items: { type: 'string' },
                     description: 'Array of relative file paths in the sandbox workspace to convert' 
-                },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                }
             },
             required: ['paths']
         }
     },
     {
         name: 'copyFromHost',
-        description: 'Copy a file or directory from the host filesystem into the sandbox session workspace.',
+        description: 'Copy a file or directory from the host filesystem into the sandbox workspace.',
         parameters: {
             type: 'object',
             properties: {
                 hostPath: { type: 'string', description: 'Absolute or relative path of the file or directory on the host filesystem' },
-                sandboxPath: { type: 'string', description: 'Destination relative path inside the sandbox workspace' },
-                sessionId: { type: 'string', description: 'Optional session workspace identifier' }
+                sandboxPath: { type: 'string', description: 'Destination relative path inside the sandbox workspace' }
             },
             required: ['hostPath', 'sandboxPath']
         }

@@ -1,5 +1,5 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ChannelType } = require('discord.js');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -36,7 +36,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.DirectMessageReactions,
-        GatewayIntentBits.GuildMessageReactions
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers
     ],
     partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 });
@@ -48,6 +49,19 @@ const getTimeInJakarta = () => {
     const now = new Date();
     const jakartaTime = new Date(now.getTime() + JAKARTA_OFFSET);
     return jakartaTime.toISOString().replace('Z', '+07:00');
+};
+
+const getGuild = async (guildId) => {
+    if (guildId) {
+        return await client.guilds.fetch(guildId);
+    }
+    const guilds = client.guilds.cache;
+    if (guilds.size === 0) {
+        const fetchedGuilds = await client.guilds.fetch();
+        if (fetchedGuilds.size === 0) throw new Error("Bot is not in any guilds (servers).");
+        return await client.guilds.fetch(fetchedGuilds.first().id);
+    }
+    return guilds.first();
 };
 
 server.connect(path.resolve(__dirname, '../agent/agent.sock')).then(() => {
@@ -87,6 +101,157 @@ client.once('ready', () => {
                         emoji: { type: 'string', description: 'The emoji to react with (e.g., "👍", "❤️", or a custom emoji name/ID).' }
                     },
                     required: ['channelId', 'messageId', 'emoji']
+                }
+            },
+            {
+                name: 'listGuilds',
+                description: 'List all servers (guilds) the bot is in.',
+                parameters: {
+                    type: 'object',
+                    properties: {}
+                }
+            },
+            {
+                name: 'getGuildDetails',
+                description: 'Get detailed information about a Discord server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional, defaults to first server bot is in).' }
+                    }
+                }
+            },
+            {
+                name: 'listChannels',
+                description: 'List all channels (including category headings) in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' }
+                    }
+                }
+            },
+            {
+                name: 'createChannel',
+                description: 'Create a new text channel, voice channel, or category in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        name: { type: 'string', description: 'The name of the new channel.' },
+                        type: { type: 'string', enum: ['text', 'voice', 'category', 'announcement'], description: 'The type of channel (default: "text").' },
+                        parentId: { type: 'string', description: 'The ID of the parent category channel (optional).' },
+                        reason: { type: 'string', description: 'Audit log reason for creating this channel (optional).' }
+                    },
+                    required: ['name']
+                }
+            },
+            {
+                name: 'updateChannel',
+                description: 'Update the configuration of a channel or category.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel to update.' },
+                        name: { type: 'string', description: 'The new name of the channel (optional).' },
+                        parentId: { type: 'string', description: 'The parent category ID (optional, pass null/empty to remove category).' },
+                        reason: { type: 'string', description: 'Audit log reason for updating this channel (optional).' }
+                    },
+                    required: ['channelId']
+                }
+            },
+            {
+                name: 'deleteChannel',
+                description: 'Delete a channel or category from a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel to delete.' },
+                        reason: { type: 'string', description: 'Audit log reason for deleting this channel (optional).' }
+                    },
+                    required: ['channelId']
+                }
+            },
+            {
+                name: 'listRoles',
+                description: 'List all roles in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' }
+                    }
+                }
+            },
+            {
+                name: 'createRole',
+                description: 'Create a new role in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        name: { type: 'string', description: 'The name of the new role.' },
+                        color: { type: 'string', description: 'The color of the role (e.g. "#FF0000" or a color name like "BLUE") (optional).' },
+                        hoist: { type: 'boolean', description: 'Whether the role should be displayed separately in the sidebar (optional).' },
+                        reason: { type: 'string', description: 'Audit log reason for creating this role (optional).' }
+                    },
+                    required: ['name']
+                }
+            },
+            {
+                name: 'updateRole',
+                description: 'Update a role in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        roleId: { type: 'string', description: 'The ID of the role to update.' },
+                        name: { type: 'string', description: 'The new name of the role (optional).' },
+                        color: { type: 'string', description: 'The new color of the role (optional).' },
+                        hoist: { type: 'boolean', description: 'Whether the role should be hoisted (optional).' },
+                        reason: { type: 'string', description: 'Audit log reason for updating this role (optional).' }
+                    },
+                    required: ['roleId']
+                }
+            },
+            {
+                name: 'deleteRole',
+                description: 'Delete a role from a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        roleId: { type: 'string', description: 'The ID of the role to delete.' },
+                        reason: { type: 'string', description: 'Audit log reason for deleting this role (optional).' }
+                    },
+                    required: ['roleId']
+                }
+            },
+            {
+                name: 'listMembers',
+                description: 'List members in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        limit: { type: 'number', description: 'Maximum number of members to return (optional, default: 50).' }
+                    }
+                }
+            },
+            {
+                name: 'manageMember',
+                description: 'Manage a server member (kick, ban, unban, edit nickname, add/remove role, timeout).',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        memberId: { type: 'string', description: 'The ID of the member/user to manage.' },
+                        action: { type: 'string', enum: ['kick', 'ban', 'unban', 'setNickname', 'addRole', 'removeRole', 'timeout'], description: 'The action to take.' },
+                        nickname: { type: 'string', description: 'Nickname to set (required for "setNickname", pass empty string to reset).' },
+                        roleId: { type: 'string', description: 'Role ID to add or remove (required for "addRole" and "removeRole").' },
+                        timeoutMinutes: { type: 'number', description: 'Minutes to timeout (required for "timeout", pass null or 0 to remove timeout).' },
+                        reason: { type: 'string', description: 'Audit log reason for the action (optional).' }
+                    },
+                    required: ['memberId', 'action']
                 }
             }
         ];
@@ -273,6 +438,291 @@ server.listen('*', 'addReaction', async (req, res) => {
         res.send({ success: true, timestamp: getTimeInJakarta() });
     } catch (err) {
         console.error('[discord] Error adding reaction:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'listGuilds', async (req, res) => {
+    try {
+        const guilds = await client.guilds.fetch();
+        const data = guilds.map(g => ({
+            id: g.id,
+            name: g.name
+        }));
+        res.send({ success: true, guilds: data });
+    } catch (err) {
+        console.error('[discord] Error in listGuilds:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'getGuildDetails', async (req, res) => {
+    const { guildId } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        res.send({
+            success: true,
+            guild: {
+                id: guild.id,
+                name: guild.name,
+                description: guild.description || null,
+                memberCount: guild.memberCount,
+                ownerId: guild.ownerId,
+                iconURL: guild.iconURL() || null,
+                rolesCount: guild.roles.cache.size,
+                channelsCount: guild.channels.cache.size
+            }
+        });
+    } catch (err) {
+        console.error('[discord] Error in getGuildDetails:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'listChannels', async (req, res) => {
+    const { guildId } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const channels = await guild.channels.fetch();
+        const data = channels.map(c => {
+            let typeName = 'unknown';
+            if (c.type === ChannelType.GuildText) typeName = 'text';
+            else if (c.type === ChannelType.GuildVoice) typeName = 'voice';
+            else if (c.type === ChannelType.GuildCategory) typeName = 'category';
+            else if (c.type === ChannelType.GuildAnnouncement) typeName = 'announcement';
+            
+            return {
+                id: c.id,
+                name: c.name,
+                type: typeName,
+                parentId: c.parentId,
+                position: c.position
+            };
+        });
+        res.send({ success: true, channels: data });
+    } catch (err) {
+        console.error('[discord] Error in listChannels:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'createChannel', async (req, res) => {
+    const { guildId, name, type = 'text', parentId, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        let channelType = ChannelType.GuildText;
+        if (type === 'voice') channelType = ChannelType.GuildVoice;
+        else if (type === 'category') channelType = ChannelType.GuildCategory;
+        else if (type === 'announcement') channelType = ChannelType.GuildAnnouncement;
+
+        const options = {
+            name,
+            type: channelType,
+            reason
+        };
+        if (parentId) {
+            options.parent = parentId;
+        }
+
+        const newChannel = await guild.channels.create(options);
+        res.send({
+            success: true,
+            channel: {
+                id: newChannel.id,
+                name: newChannel.name,
+                type: type,
+                parentId: newChannel.parentId
+            }
+        });
+    } catch (err) {
+        console.error('[discord] Error in createChannel:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'updateChannel', async (req, res) => {
+    const { channelId, name, parentId, reason } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel) throw new Error("Channel not found.");
+        
+        const options = { reason };
+        if (name !== undefined) options.name = name;
+        if (parentId !== undefined) {
+            options.parent = parentId || null;
+        }
+
+        const updated = await channel.edit(options);
+        res.send({
+            success: true,
+            channel: {
+                id: updated.id,
+                name: updated.name,
+                parentId: updated.parentId
+            }
+        });
+    } catch (err) {
+        console.error('[discord] Error in updateChannel:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'deleteChannel', async (req, res) => {
+    const { channelId, reason } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel) throw new Error("Channel not found.");
+        await channel.delete(reason);
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in deleteChannel:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'listRoles', async (req, res) => {
+    const { guildId } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const roles = await guild.roles.fetch();
+        const data = roles.map(r => ({
+            id: r.id,
+            name: r.name,
+            color: r.hexColor,
+            position: r.position,
+            hoist: r.hoist,
+            managed: r.managed,
+            permissions: r.permissions.toArray()
+        }));
+        res.send({ success: true, roles: data });
+    } catch (err) {
+        console.error('[discord] Error in listRoles:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'createRole', async (req, res) => {
+    const { guildId, name, color, hoist, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const options = { name, reason };
+        if (color !== undefined) options.color = color;
+        if (hoist !== undefined) options.hoist = hoist;
+
+        const newRole = await guild.roles.create(options);
+        res.send({
+            success: true,
+            role: {
+                id: newRole.id,
+                name: newRole.name,
+                color: newRole.hexColor,
+                hoist: newRole.hoist
+            }
+        });
+    } catch (err) {
+        console.error('[discord] Error in createRole:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'updateRole', async (req, res) => {
+    const { guildId, roleId, name, color, hoist, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const role = await guild.roles.fetch(roleId);
+        if (!role) throw new Error("Role not found.");
+
+        const options = { reason };
+        if (name !== undefined) options.name = name;
+        if (color !== undefined) options.color = color;
+        if (hoist !== undefined) options.hoist = hoist;
+
+        const updated = await role.edit(options);
+        res.send({
+            success: true,
+            role: {
+                id: updated.id,
+                name: updated.name,
+                color: updated.hexColor,
+                hoist: updated.hoist
+            }
+        });
+    } catch (err) {
+        console.error('[discord] Error in updateRole:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'deleteRole', async (req, res) => {
+    const { guildId, roleId, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const role = await guild.roles.fetch(roleId);
+        if (!role) throw new Error("Role not found.");
+        await role.delete(reason);
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in deleteRole:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'listMembers', async (req, res) => {
+    const { guildId, limit = 50 } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const members = await guild.members.fetch({ limit });
+        const data = members.map(m => ({
+            id: m.user.id,
+            username: m.user.username,
+            displayName: m.displayName,
+            nickname: m.nickname,
+            roles: m.roles.cache.map(r => r.id),
+            joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null,
+            isBot: m.user.bot
+        }));
+        res.send({ success: true, members: data });
+    } catch (err) {
+        console.error('[discord] Error in listMembers:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'manageMember', async (req, res) => {
+    const { guildId, memberId, action, nickname, roleId, timeoutMinutes, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        
+        if (action === 'unban') {
+            await guild.bans.remove(memberId, reason);
+            return res.send({ success: true });
+        }
+
+        const member = await guild.members.fetch(memberId);
+        if (!member) throw new Error("Member not found in guild.");
+
+        if (action === 'kick') {
+            await member.kick(reason);
+        } else if (action === 'ban') {
+            await member.ban({ deleteMessageSeconds: 604800, reason });
+        } else if (action === 'setNickname') {
+            await member.setNickname(nickname === undefined ? null : nickname, reason);
+        } else if (action === 'addRole') {
+            if (!roleId) throw new Error("roleId is required for addRole action.");
+            await member.roles.add(roleId, reason);
+        } else if (action === 'removeRole') {
+            if (!roleId) throw new Error("roleId is required for removeRole action.");
+            await member.roles.remove(roleId, reason);
+        } else if (action === 'timeout') {
+            const ms = timeoutMinutes ? timeoutMinutes * 60 * 1000 : null;
+            await member.timeout(ms, reason);
+        } else {
+            throw new Error(`Invalid action: ${action}`);
+        }
+
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in manageMember:', err);
         res.send({ success: false, error: err.message });
     }
 });
