@@ -3,6 +3,7 @@ const server = new (require('#UnixSocket'))("agent");
 const { GeminiProvider } = require('#Providers');
 const path = require('path');
 const fs = require('fs');
+const { fork } = require('child_process');
 
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
 const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemma-4-31b-it"];
@@ -279,107 +280,60 @@ class SubAgent {
     constructor(id, parentId, instruction, goal, toolsForAI, parentResolve) {
         this.id = id;
         this.parentId = parentId;
-        this.instruction = instruction;
         this.goal = goal;
-        this.toolsForAI = toolsForAI;
         this.parentResolve = parentResolve;
         this.history = [
             { role: 'user', parts: [{ text: `Sub-agent initialized. Goal: ${goal}` }] }
         ];
         this.isRunning = true;
+
+        // Fork the child process
+        this.child = fork(path.resolve(__dirname, 'subagent.js'), [], {
+            env: { ...process.env }
+        });
+
+        // Listen for messages from the child process
+        this.child.on('message', (msg) => {
+            if (msg.type === 'history') {
+                this.history = msg.history;
+            } else if (msg.type === 'done') {
+                this.isRunning = false;
+                this.parentResolve(msg.message);
+            }
+        });
+
+        this.child.on('exit', (code, signal) => {
+            console.log(`🤖 [SubAgent ${this.id}] Process exited with code ${code} and signal ${signal}`);
+            this.isRunning = false;
+            this.parentResolve(`Sub-agent exited with code ${code}`);
+        });
+
+        // Initialize child
+        this.child.send({
+            type: 'init',
+            id,
+            parentId,
+            instruction,
+            goal,
+            toolsForAI
+        });
     }
 
     sendMessage(message) {
-        this.history.push({ role: 'user', parts: [{ text: `MESSAGE FROM PARENT: ${message}` }] });
-        console.log(`🤖 [SubAgent ${this.id}] Received message from parent: "${message}"`);
+        if (this.child && this.child.connected) {
+            this.child.send({ type: 'message', message });
+        }
     }
 
     stop() {
         this.isRunning = false;
-        this.parentResolve("Terminated by parent agent.");
-        console.log(`🤖 [SubAgent ${this.id}] Terminated by parent.`);
-    }
-
-    async run() {
-        console.log(`🤖 [SubAgent ${this.id}] Starting...`);
-        while (this.isRunning) {
-            try {
-                const systemInstruction = `${this.instruction}\n\n### SUB-AGENT GOAL\n${this.goal}\n\nYou are a sub-agent. When your task is complete or you have a final report, use \`agent.done\` to finish and report back to your parent.`;
-                
-                const stream = provider.generate(truncateHistory(this.history), {
-                    systemInstruction,
-                    thinkingConfig: { include_thoughts: true },
-                    tools: [
-                        ...this.toolsForAI,
-                        {
-                            name: 'agent.done',
-                            description: 'Finish the sub-agent task and report the result back to the parent agent.',
-                            parameters: {
-                                type: 'object',
-                                properties: {
-                                    message: { type: 'string', description: 'The final report or result message.' }
-                                },
-                                required: ['message']
-                            }
-                        }
-                    ]
-                });
-
-                let toolCallResult = null;
-
-                for await (const chunkGenerator of stream) {
-                    for await (const part of chunkGenerator) {
-                        if (part.done) {
-                            let functionCall = part.functionCall;
-                            const textToParse = part.text || part.thought;
-                            if (textToParse && !functionCall) {
-                                functionCall = tryExtractFunctionCall(textToParse);
-                            }
-
-                            if (functionCall) {
-                                this.history.push({ role: 'model', parts: [{ text: JSON.stringify(functionCall) }] });
-                                console.log(`🤖 [SubAgent ${this.id}] Calling ${functionCall.name}`);
-
-                                if (functionCall.name === 'agent.done') {
-                                    this.isRunning = false;
-                                    this.parentResolve(functionCall.args.message);
-                                    return;
-                                }
-
-                                // Execute normal tools
-                                const [targetApp, toolName] = functionCall.name.includes('.') ? functionCall.name.split('.') : ['unknown', functionCall.name];
-                                try {
-                                    let res;
-                                    if (functionCall.name === 'agent.spawnSubagent') {
-                                        res = await handleSpawnSubagent(functionCall.args, this.id);
-                                    } else {
-                                        const socketPath = path.resolve(__dirname, `../${targetApp}/${targetApp}.sock`);
-                                        if (!fs.existsSync(socketPath)) throw new Error(`No app or socket found for "${targetApp}"`);
-                                        await server.connect(socketPath);
-                                        res = await server.request(targetApp, toolName, functionCall.args);
-                                    }
-                                    this.history.push({ 
-                                        role: 'user', 
-                                        parts: [{ text: `TOOL_RESULT [${functionCall.name}]: ${JSON.stringify(res)}` }] 
-                                    });
-                                } catch (err) {
-                                    this.history.push({ 
-                                        role: 'user', 
-                                        parts: [{ text: `TOOL_ERROR [${functionCall.name}]: ${err.message}` }] 
-                                    });
-                                }
-                            } else if (part.text || part.thought) {
-                                this.history.push({ role: 'model', parts: [{ text: part.text || part.thought }] });
-                                this.history.push({ role: 'user', parts: [{ text: "Please use function calling to perform actions or finish the task with agent.done." }] });
-                            }
-                        }
-                    }
+        if (this.child && this.child.connected) {
+            this.child.send({ type: 'stop' });
+            setTimeout(() => {
+                if (this.child && this.child.connected) {
+                    this.child.kill('SIGKILL');
                 }
-            } catch (err) {
-                console.error(`🤖 [SubAgent ${this.id}] Error:`, err);
-                this.isRunning = false;
-                this.parentResolve(`Error in sub-agent: ${err.message}`);
-            }
+            }, 500);
         }
     }
 }
@@ -422,7 +376,9 @@ async function handleSpawnSubagent(args, parentId = 'main') {
     return new Promise((resolve) => {
         const sub = new SubAgent(id, parentId, baseInstruction, args.goal, toolsForAI, resolve);
         subAgents.set(id, sub);
-        sub.run().then(() => subAgents.delete(id));
+        sub.child.on('exit', () => {
+            subAgents.delete(id);
+        });
     });
 }
 
