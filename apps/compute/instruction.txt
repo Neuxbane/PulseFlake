@@ -1,1 +1,1 @@
-Execute commands inside sandboxed Docker containers, read/write/patch sandboxed files, or convert documents (PDF, DOCX, XLSX, etc.) to Markdown.
+bridge to running shell/code sandbox, where we can run arbitrary command inside container (python, nodejs, curl, etc), read/write file, and compile Typst (.typ) files to PDF or images.

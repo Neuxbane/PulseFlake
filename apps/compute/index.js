@@ -39,14 +39,35 @@ const getHostRootPath = () => {
     return hostRootPath;
 };
 
+const copyTypstToContainer = async (containerName) => {
+    const localTypstPath = path.join(__dirname, 'bin/typst');
+    try {
+        console.log(`[compute] Copying static Typst binary into container: ${containerName}`);
+        await executeInContainer(containerName, 'mkdir -p /usr/local/bin');
+        await copyToContainer(containerName, localTypstPath, '/usr/local/bin/typst');
+        await executeInContainer(containerName, 'chmod +x /usr/local/bin/typst');
+        console.log(`[compute] Typst binary successfully installed in container: ${containerName}`);
+    } catch (e) {
+        console.error(`[compute] Failed to install Typst in container ${containerName}:`, e.message);
+    }
+};
+
 const startContainer = (containerName, image) => {
     const hostRootPath = getHostRootPath();
     const runCmd = `docker run -d --name ${containerName} -v "${hostRootPath}:/root" "${image}" tail -f /dev/null`;
     console.log(`[compute] Starting background container: ${runCmd}`);
     return new Promise((resolve, reject) => {
-        exec(runCmd, (err) => {
-            if (err) reject(err);
-            else resolve(containerName);
+        exec(runCmd, async (err) => {
+            if (err) {
+                reject(err);
+            } else {
+                try {
+                    await copyTypstToContainer(containerName);
+                    resolve(containerName);
+                } catch (copyErr) {
+                    reject(copyErr);
+                }
+            }
         });
     });
 };
@@ -73,9 +94,17 @@ const ensureContainer = async (image = 'python:3.10-alpine') => {
                     });
                 } else if (!isRunning) {
                     console.log(`[compute] Container ${containerName} exists but is stopped. Starting...`);
-                    exec(`docker start ${containerName}`, (startErr) => {
-                        if (startErr) reject(startErr);
-                        else resolve(containerName);
+                    exec(`docker start ${containerName}`, async (startErr) => {
+                        if (startErr) {
+                            reject(startErr);
+                        } else {
+                            try {
+                                await copyTypstToContainer(containerName);
+                                resolve(containerName);
+                            } catch (copyErr) {
+                                reject(copyErr);
+                            }
+                        }
                     });
                 } else {
                     resolve(containerName);
@@ -305,6 +334,18 @@ const computeTools = [
             },
             required: ['hostPath', 'sandboxPath']
         }
+    },
+    {
+        name: 'compileTypst',
+        description: 'Compile a Typst (.typ) document into a PDF or image file.',
+        parameters: {
+            type: 'object',
+            properties: {
+                filePath: { type: 'string', description: 'Relative path of the Typst (.typ) file inside the sandbox workspace' },
+                outputPath: { type: 'string', description: 'Optional relative path of the output file (e.g. document.pdf). Defaults to changing the extension to .pdf.' }
+            },
+            required: ['filePath']
+        }
     }
 ];
 
@@ -312,11 +353,11 @@ const computeTools = [
 
 // 1. Run in Sandbox
 server.listen('*', 'run', async (req, res) => {
-    const { command, image = 'python:3.10-alpine', files, sessionId, timeout = 30000 } = req.data;
+    const { command, image = 'python:3.10-alpine', files, timeout = 30000 } = req.data;
     let tempDir = null;
     
     try {
-        const containerName = await ensureContainer(sessionId, image);
+        const containerName = await ensureContainer(image);
         
         // Write files to workspace if provided
         if (files && typeof files === 'object') {
@@ -900,6 +941,67 @@ server.listen('*', 'copyFromHost', async (req, res) => {
         res.send({ success: true });
     } catch (e) {
         console.error('[compute] CopyFromHost error:', e.message);
+        res.send({ success: false, error: e.message });
+    }
+});
+
+// --- TYPST UTILITIES & LISTENERS ---
+const getHostFilePath = (relPath) => {
+    if (!relPath) throw new Error('Path is empty');
+    const hostRoot = getHostRootPath();
+    const resolved = path.resolve(hostRoot, relPath);
+    if (!resolved.startsWith(hostRoot)) {
+        throw new Error('Path traversal detected: Path is outside of hostRoot');
+    }
+    return resolved;
+};
+
+server.listen('*', 'compileTypst', async (req, res) => {
+    const { filePath, outputPath } = req.data;
+    try {
+        const hostInput = getHostFilePath(filePath);
+        
+        let outRel;
+        if (outputPath) {
+            outRel = outputPath;
+        } else {
+            const parsed = path.parse(filePath);
+            outRel = path.posix.join(parsed.dir, `${parsed.name}.pdf`);
+        }
+        
+        const hostOutput = getHostFilePath(outRel);
+        
+        // Ensure destination folder exists on host
+        const hostDestDir = path.dirname(hostOutput);
+        if (!fs.existsSync(hostDestDir)) {
+            fs.mkdirSync(hostDestDir, { recursive: true });
+        }
+        
+        const cmd = `typst compile "${hostInput}" "${hostOutput}"`;
+        console.log(`[compute] Compiling Typst on host: ${cmd}`);
+        
+        exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+            if (error) {
+                console.error('[compute] Typst compilation failed:', stderr || error.message);
+                res.send({
+                    success: false,
+                    error: error.message,
+                    stdout,
+                    stderr
+                });
+            } else {
+                console.log(`[compute] Typst compilation succeeded: ${outRel}`);
+                res.send({
+                    success: true,
+                    outputPath: outRel,
+                    stdout,
+                    stderr
+                });
+            }
+        });
+        
+    } catch (e) {
+        console.error('[compute] compileTypst error:', e.message);
         res.send({ success: false, error: e.message });
     }
 });

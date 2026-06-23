@@ -1,5 +1,5 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-const { Client, GatewayIntentBits, Partials, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ChannelType, GuildScheduledEventPrivacyLevel, GuildScheduledEventEntityType, GuildScheduledEventStatus } = require('discord.js');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -37,7 +37,8 @@ const client = new Client({
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.DirectMessageReactions,
         GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildScheduledEvents
     ],
     partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 });
@@ -353,6 +354,68 @@ client.once('ready', () => {
                         limit: { type: 'number', description: 'Number of recent messages to scan (optional, default: 100).' }
                     },
                     required: ['channelId', 'query']
+                }
+            },
+            {
+                name: 'listScheduledEvents',
+                description: 'List all scheduled events in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' }
+                    }
+                }
+            },
+            {
+                name: 'createScheduledEvent',
+                description: 'Create a new scheduled event in a server.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        name: { type: 'string', description: 'The name of the scheduled event.' },
+                        scheduledStartTime: { type: 'string', description: 'The start time of the event (ISO 8601 string, e.g. "2026-06-25T12:00:00+07:00").' },
+                        scheduledEndTime: { type: 'string', description: 'The end time of the event (ISO 8601 string). Required if entityType is "external".' },
+                        entityType: { type: 'string', enum: ['stageInstance', 'voice', 'external'], description: 'The type of the event.' },
+                        channelId: { type: 'string', description: 'The channel ID where the event will take place. Required if entityType is "stageInstance" or "voice".' },
+                        location: { type: 'string', description: 'The physical or virtual location of the event. Required if entityType is "external".' },
+                        description: { type: 'string', description: 'The description of the scheduled event (optional).' },
+                        reason: { type: 'string', description: 'Audit log reason for creating this event (optional).' }
+                    },
+                    required: ['name', 'scheduledStartTime', 'entityType']
+                }
+            },
+            {
+                name: 'updateScheduledEvent',
+                description: 'Update an existing scheduled event (e.g. edit details or start/complete/cancel it).',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        eventId: { type: 'string', description: 'The ID of the scheduled event to update.' },
+                        name: { type: 'string', description: 'The new name of the scheduled event (optional).' },
+                        scheduledStartTime: { type: 'string', description: 'The new start time of the event (ISO 8601 string, optional).' },
+                        scheduledEndTime: { type: 'string', description: 'The new end time of the event (ISO 8601 string, optional).' },
+                        entityType: { type: 'string', enum: ['stageInstance', 'voice', 'external'], description: 'The new entity type of the event (optional).' },
+                        channelId: { type: 'string', description: 'The new channel ID (optional). Pass null to clear channel (e.g. converting to external).' },
+                        location: { type: 'string', description: 'The new location of the event (optional).' },
+                        description: { type: 'string', description: 'The new description of the event (optional).' },
+                        status: { type: 'string', enum: ['scheduled', 'active', 'completed', 'canceled'], description: 'The new status of the event (optional, e.g. "active" to start it, "completed" to finish it, "canceled" to cancel it).' },
+                        reason: { type: 'string', description: 'Audit log reason for updating this event (optional).' }
+                    },
+                    required: ['eventId']
+                }
+            },
+            {
+                name: 'deleteScheduledEvent',
+                description: 'Delete (cancel) a scheduled event.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        eventId: { type: 'string', description: 'The ID of the scheduled event to delete.' }
+                    },
+                    required: ['eventId']
                 }
             }
         ];
@@ -986,6 +1049,161 @@ server.listen('*', 'searchMessages', async (req, res) => {
         res.send({ success: true, messages: data });
     } catch (err) {
         console.error('[discord] Error in searchMessages:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+// --- SCHEDULED EVENTS UTILITIES & LISTENERS ---
+const formatScheduledEvent = (event) => {
+    let privacyLevelName = 'unknown';
+    if (event.privacyLevel === GuildScheduledEventPrivacyLevel.GuildOnly) privacyLevelName = 'GuildOnly';
+
+    let entityTypeName = 'unknown';
+    if (event.entityType === GuildScheduledEventEntityType.StageInstance) entityTypeName = 'stageInstance';
+    else if (event.entityType === GuildScheduledEventEntityType.Voice) entityTypeName = 'voice';
+    else if (event.entityType === GuildScheduledEventEntityType.External) entityTypeName = 'external';
+
+    let statusName = 'unknown';
+    if (event.status === GuildScheduledEventStatus.Scheduled) statusName = 'scheduled';
+    else if (event.status === GuildScheduledEventStatus.Active) statusName = 'active';
+    else if (event.status === GuildScheduledEventStatus.Completed) statusName = 'completed';
+    else if (event.status === GuildScheduledEventStatus.Canceled) statusName = 'canceled';
+
+    return {
+        id: event.id,
+        guildId: event.guildId,
+        channelId: event.channelId,
+        creatorId: event.creatorId,
+        name: event.name,
+        description: event.description,
+        scheduledStartTime: event.scheduledStartAt ? event.scheduledStartAt.toISOString() : null,
+        scheduledEndTime: event.scheduledEndAt ? event.scheduledEndAt.toISOString() : null,
+        privacyLevel: privacyLevelName,
+        entityType: entityTypeName,
+        entityId: event.entityId,
+        location: event.entityMetadata ? event.entityMetadata.location : null,
+        status: statusName,
+        userCount: event.userCount,
+        creator: event.creator ? {
+            id: event.creator.id,
+            username: event.creator.username
+        } : null
+    };
+};
+
+server.listen('*', 'listScheduledEvents', async (req, res) => {
+    const { guildId } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const events = await guild.scheduledEvents.fetch();
+        const data = events.map(event => formatScheduledEvent(event));
+        res.send({ success: true, events: data });
+    } catch (err) {
+        console.error('[discord] Error in listScheduledEvents:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'createScheduledEvent', async (req, res) => {
+    const { guildId, name, scheduledStartTime, scheduledEndTime, entityType, channelId, location, description, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+
+        let typeVal;
+        if (entityType === 'stageInstance') typeVal = GuildScheduledEventEntityType.StageInstance;
+        else if (entityType === 'voice') typeVal = GuildScheduledEventEntityType.Voice;
+        else if (entityType === 'external') typeVal = GuildScheduledEventEntityType.External;
+        else throw new Error(`Invalid entityType: ${entityType}`);
+
+        const options = {
+            name,
+            scheduledStartTime: new Date(scheduledStartTime),
+            privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+            entityType: typeVal,
+            description,
+            reason
+        };
+
+        if (scheduledEndTime) {
+            options.scheduledEndTime = new Date(scheduledEndTime);
+        }
+
+        if (typeVal === GuildScheduledEventEntityType.External) {
+            if (!location) throw new Error("location is required for external scheduled events.");
+            options.entityMetadata = { location };
+            if (!scheduledEndTime) throw new Error("scheduledEndTime is required for external scheduled events.");
+        } else {
+            if (!channelId) throw new Error("channelId is required for stageInstance/voice scheduled events.");
+            options.channel = channelId;
+        }
+
+        const event = await guild.scheduledEvents.create(options);
+        res.send({ success: true, event: formatScheduledEvent(event) });
+    } catch (err) {
+        console.error('[discord] Error in createScheduledEvent:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'updateScheduledEvent', async (req, res) => {
+    const { guildId, eventId, name, scheduledStartTime, scheduledEndTime, entityType, channelId, location, description, status, reason } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const event = await guild.scheduledEvents.fetch(eventId);
+        if (!event) throw new Error("Scheduled event not found.");
+
+        const options = { reason };
+        if (name !== undefined) options.name = name;
+        if (scheduledStartTime !== undefined) options.scheduledStartTime = new Date(scheduledStartTime);
+        if (scheduledEndTime !== undefined) options.scheduledEndTime = scheduledEndTime ? new Date(scheduledEndTime) : null;
+        if (description !== undefined) options.description = description;
+
+        if (entityType !== undefined) {
+            let typeVal;
+            if (entityType === 'stageInstance') typeVal = GuildScheduledEventEntityType.StageInstance;
+            else if (entityType === 'voice') typeVal = GuildScheduledEventEntityType.Voice;
+            else if (entityType === 'external') typeVal = GuildScheduledEventEntityType.External;
+            else if (entityType === null) typeVal = null;
+            else throw new Error(`Invalid entityType: ${entityType}`);
+            options.entityType = typeVal;
+        }
+
+        if (channelId !== undefined) {
+            options.channel = channelId || null;
+        }
+
+        if (location !== undefined) {
+            options.entityMetadata = location ? { location } : null;
+        }
+
+        if (status !== undefined) {
+            let statusVal;
+            if (status === 'scheduled') statusVal = GuildScheduledEventStatus.Scheduled;
+            else if (status === 'active') statusVal = GuildScheduledEventStatus.Active;
+            else if (status === 'completed') statusVal = GuildScheduledEventStatus.Completed;
+            else if (status === 'canceled') statusVal = GuildScheduledEventStatus.Canceled;
+            else throw new Error(`Invalid status: ${status}`);
+            options.status = statusVal;
+        }
+
+        const updated = await event.edit(options);
+        res.send({ success: true, event: formatScheduledEvent(updated) });
+    } catch (err) {
+        console.error('[discord] Error in updateScheduledEvent:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'deleteScheduledEvent', async (req, res) => {
+    const { guildId, eventId } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const event = await guild.scheduledEvents.fetch(eventId);
+        if (!event) throw new Error("Scheduled event not found.");
+        await event.delete();
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in deleteScheduledEvent:', err);
         res.send({ success: false, error: err.message });
     }
 });
