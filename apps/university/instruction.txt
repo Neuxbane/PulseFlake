@@ -1,1 +1,1 @@
-Scraper for the UAJY student portal to login, fetch courses, tasks, grades, and content.
+Scraper for the UAJY student portal to login, list active student sessions/usernames, fetch courses, tasks, grades, and content.

@@ -88,6 +88,14 @@ const universityTools = [
             },
             required: ['username', 'courseId']
         }
+    },
+    {
+        name: 'listLoggedInSessions',
+        description: 'List all currently logged-in student sessions/usernames that are active and can be used directly without re-entering credentials.',
+        parameters: {
+            type: 'object',
+            properties: {}
+        }
     }
 ];
 
@@ -178,6 +186,16 @@ server.listen('*', 'getCourseContent', async (req, res) => {
         const content = await scraper.getCourseContent(courseId);
         return { content };
     });
+});
+
+server.listen('*', 'listLoggedInSessions', async (req, res) => {
+    try {
+        const loggedInUsernames = Array.from(instances.keys());
+        res.send({ success: true, sessions: loggedInUsernames });
+    } catch (err) {
+        console.error('[university] Error listing sessions:', err);
+        res.send({ success: false, error: err.message });
+    }
 });
 
 // --- 6. START SERVER ---
