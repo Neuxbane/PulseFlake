@@ -65,6 +65,9 @@ const saveMemories = (memories) => {
 };
 
 let chatHistory = [];
+const subAgents = new Map();
+let subAgentCounter = 0;
+
 if (fs.existsSync(historyPath)) {
     try {
         chatHistory = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
@@ -258,6 +261,17 @@ When spawning a sub-agent, specify a goal that instructs the sub-agent to:
         instruction += `\n\n### MEMORY STORAGE (MAX 20)\n${memoryContext}`;
     }
 
+    // Active sub-agents context injection
+    let activeSubAgentsContext = "";
+    if (subAgents && subAgents.size > 0) {
+        activeSubAgentsContext = Array.from(subAgents.values())
+            .map(sub => `[Sub-Agent ${sub.id}] Goal: "${sub.goal}" | Status: ${sub.isRunning ? 'RUNNING' : 'STOPPED'} (Turns: ${Math.floor(sub.history.length / 2)})`)
+            .join('\n');
+    } else {
+        activeSubAgentsContext = "No active sub-agents currently running.";
+    }
+    instruction += `\n\n### ACTIVE BACKGROUND SUB-AGENTS\n${activeSubAgentsContext}`;
+
     return instruction;
 };
 
@@ -369,9 +383,6 @@ class SubAgent {
         }
     }
 }
-
-const subAgents = new Map();
-let subAgentCounter = 0;
 
 async function handleSpawnSubagent(args, parentId = 'main') {
     const id = ++subAgentCounter;
