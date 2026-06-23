@@ -218,14 +218,26 @@ const getSystemInstruction = async (memoryContext) => {
 To ignore or when there is nothing to do, just go to tool.sleep to skip the time to the future when action maybe needed.
 Use \`agent.addMemory\`, \`updateMemory\`, or \`deleteMemory\` to store/curate key facts. If at 20, delete or replace low-value memories. Priority: user identity, core goals, and critical long-term context.
 
-### AGENT ROLE & DELEGATION PROTOCOL
+### AGENT ROLE, DELEGATION & EXECUTION PROTOCOL
 You are the Main Agent. Your core role is to serve as a fast-responding bridge between the User and the AI system while maintaining a persistent, helpful persona.
-To maximize response speed and keep your persona consistent, you must NOT execute app-specific tools directly. Instead, you must delegate all task execution to sub-agents:
+You have FULL, direct access to all registered apps and tools, just like sub-agents. However, you must carefully choose between direct execution and sub-agent spawning based on the task:
 
-1. When the user requests a task, action, or query involving micro-apps or external tools, immediately call \`agent.spawnSubagent\` with a detailed goal specifying what needs to be done.
-2. Maintain communication with the user, notifying them that a sub-agent has been dispatched to handle the task.
-3. The sub-agent will run in the background, inspect micro-apps, call tools, and achieve the goal.
-4. When the sub-agent completes the task and reports back, summarize the results and present them to the user.
+1. **Direct Execution (Simple/Informational Tasks)**:
+   - Handle simple, single-step tasks directly to ensure maximum response speed.
+   - Examples: Checking a single status, fetching a current memory, sending a quick message, answering simple informational questions, or executing a single, non-blocking tool call.
+2. **Sub-Agent Delegation (Complex/Multi-Step Workflows)**:
+   - Delegate complex, long-running, multi-step tasks, or workflows requiring loops and logic checks across multiple apps to sub-agents via \`agent.spawnSubagent\`.
+   - Examples: Writing code, researching web pages in a loop, gathering reports from multiple apps, or conducting multi-turn tasks.
+   - When spawning a sub-agent, immediately notify the user that a sub-agent has been dispatched.
+
+### SUB-AGENT CONTROL & MONITORING TOOLS
+You can manage and interact with running sub-agents in the background using the following tools:
+- \`agent.listSubagents\`: Get the IDs, goals, and parent details of all active background sub-agents.
+- \`agent.getSubagentHistory\`: Retrieve the chat history and logs of a running sub-agent to monitor its progress.
+- \`agent.sendMessageToSubagent\`: Send message updates, user feedback, or append new instructions/data directly to a running sub-agent's event queue/history.
+- \`agent.stopSubagent\`: Terminate/stop a running sub-agent immediately by its ID.
+
+*Note: Sub-agents do NOT have spawning capability; they cannot spawn nested sub-agents and must only call \`agent.done\` to report results back when completed.*
 
 ### SUB-AGENT TOOL DISCOVERY & EXECUTION PROTOCOL (For Spawning)
 When spawning a sub-agent, specify a goal that instructs the sub-agent to:
@@ -261,6 +273,17 @@ class SubAgent {
             { role: 'user', parts: [{ text: `Sub-agent initialized. Goal: ${goal}` }] }
         ];
         this.isRunning = true;
+    }
+
+    sendMessage(message) {
+        this.history.push({ role: 'user', parts: [{ text: `MESSAGE FROM PARENT: ${message}` }] });
+        console.log(`🤖 [SubAgent ${this.id}] Received message from parent: "${message}"`);
+    }
+
+    stop() {
+        this.isRunning = false;
+        this.parentResolve("Terminated by parent agent.");
+        console.log(`🤖 [SubAgent ${this.id}] Terminated by parent.`);
     }
 
     async run() {
@@ -533,6 +556,48 @@ const processEvents = async (eventsToProcess) => {
                             },
                             required: ['index', 'content']
                         }
+                    },
+                    {
+                        name: 'agent.listSubagents',
+                        description: 'Get a list of all currently running sub-agents with their IDs and goals.',
+                        parameters: {
+                            type: 'object',
+                            properties: {}
+                        }
+                    },
+                    {
+                        name: 'agent.sendMessageToSubagent',
+                        description: 'Send a message, feedback, or add a prompt/instruction to a running sub-agent\'s queue.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                subagentId: { type: 'integer', description: 'The ID of the target sub-agent.' },
+                                message: { type: 'string', description: 'The message or new instructions/queue details to send.' }
+                            },
+                            required: ['subagentId', 'message']
+                        }
+                    },
+                    {
+                        name: 'agent.stopSubagent',
+                        description: 'Terminate/stop a running sub-agent by its ID.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                subagentId: { type: 'integer', description: 'The ID of the sub-agent to stop.' }
+                            },
+                            required: ['subagentId']
+                        }
+                    },
+                    {
+                        name: 'agent.getSubagentHistory',
+                        description: 'Read the complete chat history/logs of a running sub-agent to monitor its progress.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                subagentId: { type: 'integer', description: 'The ID of the sub-agent.' }
+                            },
+                            required: ['subagentId']
+                        }
                     }
                 ]
             });
@@ -578,6 +643,35 @@ const processEvents = async (eventsToProcess) => {
                                     let toolRes;
                                     if (fullName === 'agent.spawnSubagent') {
                                         toolRes = await handleSpawnSubagent(args, 'main');
+                                    } else if (fullName === 'agent.listSubagents') {
+                                        const list = [];
+                                        for (const [id, sub] of subAgents.entries()) {
+                                            list.push({ id, goal: sub.goal, parentId: sub.parentId });
+                                        }
+                                        toolRes = { success: true, subagents: list };
+                                    } else if (fullName === 'agent.sendMessageToSubagent') {
+                                        const sub = subAgents.get(args.subagentId);
+                                        if (!sub) {
+                                            toolRes = { success: false, message: `Sub-agent ${args.subagentId} not found.` };
+                                        } else {
+                                            sub.sendMessage(args.message);
+                                            toolRes = { success: true, message: `Message sent to sub-agent ${args.subagentId}.` };
+                                        }
+                                    } else if (fullName === 'agent.stopSubagent') {
+                                        const sub = subAgents.get(args.subagentId);
+                                        if (!sub) {
+                                            toolRes = { success: false, message: `Sub-agent ${args.subagentId} not found.` };
+                                        } else {
+                                            sub.stop();
+                                            toolRes = { success: true, message: `Sub-agent ${args.subagentId} stopped.` };
+                                        }
+                                    } else if (fullName === 'agent.getSubagentHistory') {
+                                        const sub = subAgents.get(args.subagentId);
+                                        if (!sub) {
+                                            toolRes = { success: false, message: `Sub-agent ${args.subagentId} not found.` };
+                                        } else {
+                                            toolRes = { success: true, history: sub.history };
+                                        }
                                     } else if (fullName === 'agent.addMemory') {
                                         const memories = getMemories();
                                         if (memories.length >= 20) {
