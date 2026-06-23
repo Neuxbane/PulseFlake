@@ -253,6 +253,107 @@ client.once('ready', () => {
                     },
                     required: ['memberId', 'action']
                 }
+            },
+            {
+                name: 'listMessages',
+                description: 'List recent message history in a channel.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel to fetch messages from.' },
+                        limit: { type: 'number', description: 'Max number of messages to fetch (optional, default: 50).' },
+                        before: { type: 'string', description: 'Message ID to fetch messages before (optional).' },
+                        after: { type: 'string', description: 'Message ID to fetch messages after (optional).' }
+                    },
+                    required: ['channelId']
+                }
+            },
+            {
+                name: 'updateMessage',
+                description: 'Edit a message previously sent by the bot.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel containing the message.' },
+                        messageId: { type: 'string', description: 'The ID of the message to edit.' },
+                        content: { type: 'string', description: 'The new message content.' }
+                    },
+                    required: ['channelId', 'messageId', 'content']
+                }
+            },
+            {
+                name: 'deleteMessage',
+                description: 'Delete a message from a channel.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel containing the message.' },
+                        messageId: { type: 'string', description: 'The ID of the message to delete.' },
+                        reason: { type: 'string', description: 'Audit log reason for deleting this message (optional).' }
+                    },
+                    required: ['channelId', 'messageId']
+                }
+            },
+            {
+                name: 'searchGuilds',
+                description: 'Search for servers (guilds) matching a name query.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { type: 'string', description: 'The search query to match against server names.' }
+                    },
+                    required: ['query']
+                }
+            },
+            {
+                name: 'searchChannels',
+                description: 'Search for channels matching a name query.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        query: { type: 'string', description: 'The search query to match against channel names.' }
+                    },
+                    required: ['query']
+                }
+            },
+            {
+                name: 'searchRoles',
+                description: 'Search for roles matching a name query.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        query: { type: 'string', description: 'The search query to match against role names.' }
+                    },
+                    required: ['query']
+                }
+            },
+            {
+                name: 'searchMembers',
+                description: 'Search for server members matching a name/nickname query.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        guildId: { type: 'string', description: 'The ID of the server (optional).' },
+                        query: { type: 'string', description: 'The search query to match against usernames/nicknames.' },
+                        limit: { type: 'number', description: 'Max number of results to return (optional, default: 50).' }
+                    },
+                    required: ['query']
+                }
+            },
+            {
+                name: 'searchMessages',
+                description: 'Search recent messages in a channel matching a content query.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        channelId: { type: 'string', description: 'The ID of the channel to search messages in.' },
+                        query: { type: 'string', description: 'The text query to search for inside message content.' },
+                        limit: { type: 'number', description: 'Number of recent messages to scan (optional, default: 100).' }
+                    },
+                    required: ['channelId', 'query']
+                }
             }
         ];
 
@@ -723,6 +824,168 @@ server.listen('*', 'manageMember', async (req, res) => {
         res.send({ success: true });
     } catch (err) {
         console.error('[discord] Error in manageMember:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'listMessages', async (req, res) => {
+    const { channelId, limit = 50, before, after } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.messages) throw new Error("Channel not found or has no message history.");
+        const options = { limit };
+        if (before) options.before = before;
+        if (after) options.after = after;
+
+        const messages = await channel.messages.fetch(options);
+        const data = messages.map(m => ({
+            id: m.id,
+            author: {
+                id: m.author.id,
+                username: m.author.username
+            },
+            content: m.content,
+            timestamp: m.createdAt.toISOString(),
+            attachments: m.attachments.map(a => a.url)
+        }));
+        res.send({ success: true, messages: data });
+    } catch (err) {
+        console.error('[discord] Error in listMessages:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'updateMessage', async (req, res) => {
+    const { channelId, messageId, content } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.messages) throw new Error("Channel not found.");
+        const message = await channel.messages.fetch(messageId);
+        if (!message) throw new Error("Message not found.");
+        if (message.author.id !== client.user.id) throw new Error("Bot can only edit its own messages.");
+        
+        await message.edit(content);
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in updateMessage:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'deleteMessage', async (req, res) => {
+    const { channelId, messageId, reason } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.messages) throw new Error("Channel not found.");
+        const message = await channel.messages.fetch(messageId);
+        if (!message) throw new Error("Message not found.");
+        
+        await message.delete(reason);
+        res.send({ success: true });
+    } catch (err) {
+        console.error('[discord] Error in deleteMessage:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'searchGuilds', async (req, res) => {
+    const { query } = req.data;
+    try {
+        const guilds = await client.guilds.fetch();
+        const filtered = guilds.filter(g => g.name.toLowerCase().includes(query.toLowerCase()));
+        const data = filtered.map(g => ({
+            id: g.id,
+            name: g.name
+        }));
+        res.send({ success: true, guilds: data });
+    } catch (err) {
+        console.error('[discord] Error in searchGuilds:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'searchChannels', async (req, res) => {
+    const { guildId, query } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const channels = await guild.channels.fetch();
+        const filtered = channels.filter(c => c.name.toLowerCase().includes(query.toLowerCase()));
+        const data = filtered.map(c => {
+            let typeName = 'unknown';
+            if (c.type === ChannelType.GuildText) typeName = 'text';
+            else if (c.type === ChannelType.GuildVoice) typeName = 'voice';
+            else if (c.type === ChannelType.GuildCategory) typeName = 'category';
+            else if (c.type === ChannelType.GuildAnnouncement) typeName = 'announcement';
+
+            return {
+                id: c.id,
+                name: c.name,
+                type: typeName,
+                parentId: c.parentId
+            };
+        });
+        res.send({ success: true, channels: data });
+    } catch (err) {
+        console.error('[discord] Error in searchChannels:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'searchRoles', async (req, res) => {
+    const { guildId, query } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const roles = await guild.roles.fetch();
+        const filtered = roles.filter(r => r.name.toLowerCase().includes(query.toLowerCase()));
+        const data = filtered.map(r => ({
+            id: r.id,
+            name: r.name,
+            color: r.hexColor
+        }));
+        res.send({ success: true, roles: data });
+    } catch (err) {
+        console.error('[discord] Error in searchRoles:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'searchMembers', async (req, res) => {
+    const { guildId, query, limit = 50 } = req.data;
+    try {
+        const guild = await getGuild(guildId);
+        const members = await guild.members.fetch({ query, limit });
+        const data = members.map(m => ({
+            id: m.user.id,
+            username: m.user.username,
+            displayName: m.displayName,
+            nickname: m.nickname
+        }));
+        res.send({ success: true, members: data });
+    } catch (err) {
+        console.error('[discord] Error in searchMembers:', err);
+        res.send({ success: false, error: err.message });
+    }
+});
+
+server.listen('*', 'searchMessages', async (req, res) => {
+    const { channelId, query, limit = 100 } = req.data;
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.messages) throw new Error("Channel not found or does not support message history.");
+        const messages = await channel.messages.fetch({ limit });
+        const filtered = messages.filter(m => m.content.toLowerCase().includes(query.toLowerCase()));
+        const data = filtered.map(m => ({
+            id: m.id,
+            author: {
+                id: m.author.id,
+                username: m.author.username
+            },
+            content: m.content,
+            timestamp: m.createdAt.toISOString()
+        }));
+        res.send({ success: true, messages: data });
+    } catch (err) {
+        console.error('[discord] Error in searchMessages:', err);
         res.send({ success: false, error: err.message });
     }
 });
