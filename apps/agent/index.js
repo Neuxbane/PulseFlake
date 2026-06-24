@@ -126,9 +126,24 @@ const loadHistory = () => {
     }
 }
 
-const truncateHistory = (history) => {
+const cosineSimilarity = (vecA, vecB) => {
+    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+    if (magnitudeA === 0 || magnitudeB === 0) return 0;
+    return dotProduct / (magnitudeA * magnitudeB);
+};
+
+const getTurnText = (turn) => {
+    const userText = turn.user.parts ? turn.user.parts.map(p => p.text || '').join(' ').trim() : '';
+    const modelText = turn.model && turn.model.parts ? turn.model.parts.map(p => p.text || '').join(' ').trim() : '';
+    return `${userText} ${modelText}`.trim();
+};
+
+const truncateHistory = async (history, queryText) => {
     const RAM_LIMIT = 50;
-    const ANCHOR_TURN_LIMIT = 10; // 10 turns = 20 messages
+    const RAG_LIMIT = 40; // up to 40 turns
 
     if (!history || history.length === 0) return [];
 
@@ -144,46 +159,91 @@ const truncateHistory = (history) => {
     // 1. RAM: Keep the last 50 messages raw
     const ram = history.slice(-RAM_LIMIT);
 
-    // 2. Anchor: Compress the preceding history into Turns
+    // 2. Anchor Candidates: All preceding history turned into Turns
     const anchorCandidates = history.slice(0, history.length - RAM_LIMIT);
     const turns = [];
     let currentTurn = null;
 
     for (const msg of anchorCandidates) {
         if (msg.role === 'user') {
-            // If we have a finished turn, push it to the list
             if (currentTurn) {
                 turns.push(currentTurn);
             }
-            // Start a new turn
             currentTurn = {
                 user: msg,
                 model: null
             };
         } else if ((msg.role === 'model' || msg.role === 'assistant') && currentTurn) {
-            // Keep updating the model/assistant part of the turn to ensure we have the FINAL response
             currentTurn.model = msg;
         }
     }
-    // Push the last turn if it exists
     if (currentTurn) {
         turns.push(currentTurn);
     }
 
-    // Take the 10 most recent turns
-    const recentTurns = turns.slice(-ANCHOR_TURN_LIMIT);
+    // Backfill turn embeddings if missing
+    for (const turn of turns) {
+        if (!turn.user.embedding) {
+            const turnText = getTurnText(turn);
+            if (turnText) {
+                try {
+                    const vector = await provider.embed([{ text: turnText }]);
+                    if (vector && vector.length > 0) {
+                        turn.user.embedding = vector;
+                        // Save back to the original message in history reference
+                        const origMsg = history.find(m => m === turn.user);
+                        if (origMsg) origMsg.embedding = vector;
+                    }
+                } catch (e) {
+                    console.error('[agent] Failed to embed turn context:', e.message);
+                }
+            }
+        }
+    }
+
+    let selectedTurns = [];
+    let queryEmbedding = null;
+
+    if (queryText) {
+        try {
+            queryEmbedding = await provider.embed([{ text: queryText }]);
+        } catch (e) {
+            console.error('[agent] Failed to embed query:', e.message);
+        }
+    }
+
+    if (queryEmbedding && queryEmbedding.length > 0) {
+        const turnsWithSimilarity = [];
+        for (const turn of turns) {
+            const similarity = turn.user.embedding ? cosineSimilarity(queryEmbedding, turn.user.embedding) : 0;
+            turnsWithSimilarity.push({ turn, similarity });
+        }
+
+        // Sort by similarity descending
+        turnsWithSimilarity.sort((a, b) => b.similarity - a.similarity);
+
+        // Take top 40 turns
+        const topTurns = turnsWithSimilarity.slice(0, RAG_LIMIT).map(x => x.turn);
+
+        // Sort chronologically based on their original order
+        const turnIndices = new Map(turns.map((t, idx) => [t, idx]));
+        topTurns.sort((a, b) => turnIndices.get(a) - turnIndices.get(b));
+        selectedTurns = topTurns;
+    } else {
+        // Fallback to the 40 most recent turns
+        selectedTurns = turns.slice(-RAG_LIMIT);
+    }
+
     const compressedAnchor = [];
-    for (const turn of recentTurns) {
+    for (const turn of selectedTurns) {
         compressedAnchor.push(turn.user);
         if (turn.model) {
             compressedAnchor.push(turn.model);
         }
     }
 
-    // 3. Merge Anchor + RAM
     let updatedHistory = [...compressedAnchor, ...ram];
 
-    // 4. API Alignment: Ensure it starts with a 'user' role
     while (updatedHistory.length > 1 && updatedHistory[0].role !== 'user') {
         updatedHistory.shift();
     }
@@ -463,7 +523,9 @@ const processEvents = async (eventsToProcess) => {
             chatHistory.push({ role: 'user', parts: combinedContent });
             saveHistory();
 
-            let messages = truncateHistory(chatHistory);
+            const queryText = combinedContent.map(p => p.text || '').join(' ').trim();
+            let messages = await truncateHistory(chatHistory, queryText);
+            saveHistory();
 
             // Fetch memories and inject into context (as pseudo-history/system setup)
             const currentMemories = getMemories();
