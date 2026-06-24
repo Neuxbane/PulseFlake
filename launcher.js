@@ -597,7 +597,6 @@ if (process.argv.includes('--daemon')) {
         stdio: 'ignore'
     })
     daemon.unref();
-    process.exit(0);
 } else {
     startTUI();
 }
