@@ -541,6 +541,25 @@ const startAppSilent = (app) => {
     }
 };
 
+const startTUI = ()=>{
+    // Handle TUI termination signals
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    process.on('uncaughtException', (err) => {
+        console.error('\nUncaught Exception:', err);
+        shutdown();
+    });
+
+    setupInput();
+
+    // Listen for terminal resize events to adjust log viewer height dynamically
+    process.stdout.on('resize', () => {
+        render();
+    });
+
+    render();
+}
+
 // --- RUN ENTRYPOINT ---
 if (process.argv.includes('--daemon')) {
     runDaemon();
@@ -576,26 +595,13 @@ if (process.argv.includes('--daemon')) {
         cwd: __dirname,
         detached: true,
         stdio: 'ignore'
-    });
+    })
     daemon.unref();
-    
-    console.log('✨ Done. Background daemon is monitoring.');
     process.exit(0);
 } else {
-    // Handle TUI termination signals
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-    process.on('uncaughtException', (err) => {
-        console.error('\nUncaught Exception:', err);
-        shutdown();
-    });
+    startTUI();
+}
 
-    setupInput();
-
-    // Listen for terminal resize events to adjust log viewer height dynamically
-    process.stdout.on('resize', () => {
-        render();
-    });
-
-    render();
+if(process.argv.includes('--tui')) {
+    startTUI();
 }
