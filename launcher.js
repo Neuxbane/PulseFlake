@@ -546,9 +546,16 @@ if (process.argv.includes('--daemon')) {
     runDaemon();
 } else if (process.argv.includes('--start')) {
     const startIdx = process.argv.indexOf('--start');
-    const appsToStart = process.argv.slice(startIdx + 1);
+    const argsAfterStart = process.argv.slice(startIdx + 1);
     
-    console.log(`🚀 Starting apps in background: ${appsToStart.join(', ')}...`);
+    let appsToStart;
+    if (argsAfterStart.includes('--all')) {
+        appsToStart = apps.map(a => a.name);
+        console.log(`🚀 Starting ALL apps in background! ✨`);
+    } else {
+        appsToStart = argsAfterStart;
+        console.log(`🚀 Starting apps in background: ${appsToStart.join(', ')}...`);
+    }
     
     appsToStart.forEach(name => {
         const app = apps.find(a => a.name === name);
@@ -562,6 +569,7 @@ if (process.argv.includes('--daemon')) {
             console.error(`  App not found: ${name}`);
         }
     });
+
     
     // Spawn background daemon to monitor
     const daemon = spawn(process.execPath, [__filename, '--daemon'], {

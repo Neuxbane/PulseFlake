@@ -1,2 +1,2 @@
 #!/bin/bash
-node "$(dirname "$0")/launcher.js"
+node "$(dirname "$0")/launcher.js" "$@"
