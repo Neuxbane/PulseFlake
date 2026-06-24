@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
-const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemma-4-31b-it"];
+const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemma-4-26b-a4b-it"];
 const provider = new GeminiProvider({ apiKeys, models });
 
 const tryExtractFunctionCall = (text) => {
