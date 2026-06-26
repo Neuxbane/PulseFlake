@@ -4,7 +4,7 @@ const server = new (require('#UnixSocket'))("tools");
 const apiKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',') : [];
 const models = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ["gemini-3.1-flash-lite-preview"];
 
-const provider = new (require('#Providers').GeminiProvider)({ apiKeys, models });
+const provider = require('../../utils/createProvider')({ apiKeys, models });
 
 let tools = {};
 let toolEmbeddings = {};

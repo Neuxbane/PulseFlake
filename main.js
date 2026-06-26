@@ -6,12 +6,12 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const dotenv = require('dotenv');
-const GeminiProvider = require('./providers/gemini');
 const { toolDefinitions, executeTool } = require('./utils/tools');
 const { getUserSessionManager } = require('./utils/SessionManager');
 const cookieParser = require('cookie-parser');
 const axios = require('axios');
 const cookie = require('cookie');
+const createProvider = require('./utils/createProvider');
 
 
 const deviceManager = require('./utils/DeviceManager');
@@ -449,7 +449,7 @@ try {
 }
 
 const geminiKeys = config.filter(c => c.provider === 'gemini').map(c => c.key);
-const provider = new GeminiProvider({ apiKeys: geminiKeys });
+const provider = createProvider({ apiKeys: geminiKeys });
 
 const systemInstruction = fs.readFileSync(path.join(__dirname, 'orchestrator.instruction.md'), 'utf8');
 

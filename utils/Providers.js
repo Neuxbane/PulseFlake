@@ -1,4 +1,5 @@
 const GeminiProvider = require('../providers/gemini');
+const LlamaCppProvider = require('../providers/llamacpp');
 
 /**
  * Aggregated provider exports for convenient access and IntelliSense.
@@ -6,4 +7,5 @@ const GeminiProvider = require('../providers/gemini');
  */
 module.exports = {
     GeminiProvider,
+    LlamaCppProvider,
 };
